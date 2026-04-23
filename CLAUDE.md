@@ -32,19 +32,29 @@ Web app for the **College of Computer Studies (CCS)** that replaces paper-based 
 ### Folder layout
 ```
 docutrail/
-├── scripts/                       # one-off utilities (smoke tests, seeds)
+├── scripts/
+│   ├── check-connection.ts        # smoke test REST + pooler
+│   ├── setup-rls.ts               # enable RLS + has_permission() + policies (run once after db:push)
+│   └── seed.ts                    # insert roles / offices / role_permissions
 └── src/
     ├── middleware.ts              # gates routes via updateSession
-    ├── app/                       # App Router pages
-    │   ├── layout.tsx             # fonts + <Toaster richColors />
-    │   └── globals.css            # Tailwind v4 + shadcn tokens
-    ├── components/ui/             # shadcn primitives
+    ├── app/
+    │   ├── layout.tsx             # root: fonts + <Toaster richColors />
+    │   ├── (auth)/login/          # public login page
+    │   └── (app)/                 # authenticated shell
+    │       ├── layout.tsx         # sidebar + auth guard
+    │       ├── dashboard/         # home page
+    │       └── admin/users/       # IT Admin: user list + create
+    ├── components/
+    │   ├── app/Sidebar.tsx        # role-gated nav + sign-out
+    │   └── ui/                    # shadcn primitives
     └── lib/
         ├── supabase/              # client.ts, server.ts, admin.ts, middleware.ts
-        ├── db/                    # Drizzle client + schema
+        ├── db/                    # index.ts (Drizzle client + schema export), schema.ts
+        ├── user.ts                # React-cache getCurrentUserProfile() helper
         ├── rbac/permissions.ts    # mirrors DB policies in TS
-        ├── pdf/                   # generate + stampSignature
-        └── workflow/stateMachine.ts
+        ├── pdf/                   # generate + stampSignature (Phase 4)
+        └── workflow/stateMachine.ts (Phase 3)
 ```
 
 ## Design & style guidelines
@@ -109,6 +119,9 @@ npm run db:generate   # drizzle-kit generate  (after editing src/lib/db/schema.t
 npm run db:migrate    # drizzle-kit migrate   (apply pending migrations)
 npm run db:push       # drizzle-kit push      (direct push, skip migration files)
 npm run db:studio     # drizzle-kit studio    (DB GUI)
+
+npm run setup:rls     # run scripts/setup-rls.ts  — enable RLS + policies (once per fresh DB)
+npm run seed          # run scripts/seed.ts        — seed roles / offices / permissions
 ```
 
 ### Connectivity smoke test (run first if anything seems off)
@@ -125,6 +138,15 @@ Expected:
 ```bash
 npx shadcn@latest add <component>
 ```
+
+## Key patterns (Phase 1)
+
+- **User profile** — always fetch via `getCurrentUserProfile()` from `@/lib/user`. It is `React.cache()`-memoised per request, so layout + page can both call it without a double query.
+- **Auth guard** — `(app)/layout.tsx` redirects to `/login` when `getCurrentUserProfile()` returns `null`. The middleware handles the unauthenticated redirect earlier; the layout is a belt-and-suspenders check.
+- **Base UI dialogs** — shadcn Dialog is built on `@base-ui/react/dialog`, not Radix. Use the `render` prop instead of `asChild` to customise the trigger element: `<DialogTrigger render={<Button />} />`.
+- **Server actions return shape** — `{ success: true }` or `{ success: false; error: string }`. Callers check `result.success` before showing a toast.
+- **Zod v4** — use `parsed.error.issues[0].message` (not `.errors`); `z.string().email()` still works.
+- **Schema push flow for dev** — edit `schema.ts` → `npm run db:push` → `npm run setup:rls` (only needed when adding new tables) → `npm run seed` (idempotent).
 
 ## Testing & build
 

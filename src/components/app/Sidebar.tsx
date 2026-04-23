@@ -1,0 +1,91 @@
+'use client'
+
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
+import { cn } from '@/lib/utils'
+import { can, type Role, type Action } from '@/lib/rbac/permissions'
+import { createClient } from '@/lib/supabase/client'
+import { Button } from '@/components/ui/button'
+import { LayoutDashboard, Users, LogOut } from 'lucide-react'
+
+type NavItem = {
+  href: string
+  label: string
+  icon: React.ReactNode
+  requires?: Action
+}
+
+const NAV: NavItem[] = [
+  {
+    href: '/dashboard',
+    label: 'Dashboard',
+    icon: <LayoutDashboard size={16} />,
+  },
+  {
+    href: '/admin/users',
+    label: 'Users',
+    icon: <Users size={16} />,
+    requires: 'manage_users',
+  },
+]
+
+interface SidebarProps {
+  role: Role
+  fullName: string
+  email: string
+}
+
+export default function Sidebar({ role, fullName, email }: SidebarProps) {
+  const pathname = usePathname()
+  const router = useRouter()
+
+  async function signOut() {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
+
+  const visible = NAV.filter((item) => !item.requires || can(role, item.requires))
+
+  return (
+    <aside className="flex h-full w-56 shrink-0 flex-col border-r bg-background">
+      <div className="border-b px-4 py-3">
+        <p className="text-sm font-semibold">DocuTrail</p>
+        <p className="text-xs text-muted-foreground">CCS</p>
+      </div>
+
+      <nav className="flex-1 space-y-0.5 p-2">
+        {visible.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors',
+              pathname.startsWith(item.href)
+                ? 'bg-accent text-accent-foreground font-medium'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+            )}
+          >
+            {item.icon}
+            {item.label}
+          </Link>
+        ))}
+      </nav>
+
+      <div className="space-y-1 border-t p-3">
+        <p className="truncate text-sm font-medium">{fullName}</p>
+        <p className="truncate text-xs text-muted-foreground">{email}</p>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-1 w-full justify-start gap-2 text-muted-foreground"
+          onClick={signOut}
+        >
+          <LogOut size={14} />
+          Sign out
+        </Button>
+      </div>
+    </aside>
+  )
+}
