@@ -49,6 +49,7 @@ export default function Tiptap({ content, onChange, editable = true, className }
     extensions: [StarterKit],
     content: content ?? '',
     editable,
+    immediatelyRender: false,
     shouldRerenderOnTransaction: true,
     onUpdate({ editor }) {
       onChange?.(editor.getJSON())

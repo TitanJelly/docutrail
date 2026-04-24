@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# MCP config holds tokens — never commit
+.mcp.json
+
 # vercel
 .vercel
 

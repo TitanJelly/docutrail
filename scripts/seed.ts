@@ -15,6 +15,18 @@ type RoleName = InferInsertModel<typeof schema.roles>['name']
 const client = postgres(process.env.DATABASE_URL!, { max: 1 })
 const db = drizzle(client, { schema })
 
+// Rank drives skip-rule enforcement in approval routes (higher = more authority)
+const ROLE_RANK: Record<RoleName, number> = {
+  it_admin: 0,       // admin, not in routing chain
+  student: 1,
+  faculty: 2,
+  coordinator: 3,
+  office_staff: 3,   // lateral target — exempt from skip-rule
+  dept_chair: 4,
+  dean: 5,
+  exec_director: 6,
+}
+
 const ROLE_DESCRIPTIONS: Record<RoleName, string> = {
   it_admin: 'IT Administrator — full system access and user provisioning',
   dean: 'Dean — final approval authority, read-all documents',
@@ -54,7 +66,10 @@ const OFFICES = [
 async function main() {
   console.log('Seeding roles…')
   for (const [name, description] of Object.entries(ROLE_DESCRIPTIONS) as [RoleName, string][]) {
-    await db.insert(schema.roles).values({ name, description }).onConflictDoNothing()
+    await db
+      .insert(schema.roles)
+      .values({ name, description, rank: ROLE_RANK[name] })
+      .onConflictDoNothing()
   }
 
   console.log('Seeding offices…')

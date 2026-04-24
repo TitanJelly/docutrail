@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { can, type Role, type Action } from '@/lib/rbac/permissions'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Users, FileText, LayoutTemplate, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, FileText, LayoutTemplate, LogOut, CheckSquare, GitBranch } from 'lucide-react'
 
 type NavItem = {
   href: string
@@ -27,6 +27,12 @@ const NAV: NavItem[] = [
     icon: <FileText size={16} />,
   },
   {
+    href: '/approvals',
+    label: 'Approvals',
+    icon: <CheckSquare size={16} />,
+    requires: 'approve_document',
+  },
+  {
     href: '/admin/users',
     label: 'Users',
     icon: <Users size={16} />,
@@ -37,6 +43,12 @@ const NAV: NavItem[] = [
     label: 'Templates',
     icon: <LayoutTemplate size={16} />,
     requires: 'manage_templates',
+  },
+  {
+    href: '/admin/routes',
+    label: 'Routes',
+    icon: <GitBranch size={16} />,
+    requires: 'manage_routes',
   },
 ]
 

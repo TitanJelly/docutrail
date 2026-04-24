@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { isNull } from 'drizzle-orm'
 import { getCurrentUserProfile } from '@/lib/user'
 import { db } from '@/lib/db'
-import { documentTemplates } from '@/lib/db/schema'
+import { documentTemplates, approvalRoutes } from '@/lib/db/schema'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/table'
 import CreateTemplateDialog from './_components/CreateTemplateDialog'
 import DeleteTemplateButton from './_components/DeleteTemplateButton'
+import AssignRouteSelect from './_components/AssignRouteSelect'
 
 export const metadata = { title: 'Templates — DocuTrail' }
 
@@ -21,11 +22,18 @@ export default async function AdminTemplatesPage() {
   const profile = await getCurrentUserProfile()
   if (!profile || profile.role !== 'it_admin') redirect('/dashboard')
 
-  const templates = await db
-    .select()
-    .from(documentTemplates)
-    .where(isNull(documentTemplates.deletedAt))
-    .orderBy(documentTemplates.name)
+  const [templates, routes] = await Promise.all([
+    db
+      .select()
+      .from(documentTemplates)
+      .where(isNull(documentTemplates.deletedAt))
+      .orderBy(documentTemplates.name),
+    db
+      .select({ id: approvalRoutes.id, name: approvalRoutes.name })
+      .from(approvalRoutes)
+      .where(isNull(approvalRoutes.deletedAt))
+      .orderBy(approvalRoutes.name),
+  ])
 
   return (
     <div className="space-y-4">
@@ -40,6 +48,7 @@ export default async function AdminTemplatesPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Type</TableHead>
+              <TableHead>Route</TableHead>
               <TableHead>Created</TableHead>
               <TableHead className="w-16" />
             </TableRow>
@@ -47,7 +56,7 @@ export default async function AdminTemplatesPage() {
           <TableBody>
             {templates.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                   No templates yet. Create the first one.
                 </TableCell>
               </TableRow>
@@ -57,6 +66,13 @@ export default async function AdminTemplatesPage() {
                   <TableCell className="font-medium">{t.name}</TableCell>
                   <TableCell>
                     <Badge variant="outline">{t.type}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <AssignRouteSelect
+                      templateId={t.id}
+                      currentRouteId={t.defaultRouteId ?? null}
+                      routes={routes}
+                    />
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {new Date(t.createdAt).toLocaleDateString()}

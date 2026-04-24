@@ -82,6 +82,7 @@ docutrail/
 - **In-app notifications only** for now. Email/SMS deferred.
 - **RLS is the source of truth.** The `permissions.ts` map mirrors SQL policies — keep them in sync; treat them as two views of the same rules.
 - **Audit log is append-only.** Hash-chain (`prev_hash`, `row_hash`) written by Postgres triggers. Plan: `REVOKE ALL ... GRANT INSERT` on `audit_log` so even the service role cannot UPDATE/DELETE from app code.
+- **Routing integrity — "routes as rails, not choices."** Senders never pick a recipient. Every document is created from a template; the template has one `default_route_id`; `approval_steps` are resolved to assignees server-side by role + `office_scope` (`creator_office | specific_office | any`). `document_approvals` INSERT is blocked for all app roles (service-role only); UPDATE is gated by `assignee_id = auth.uid() AND status = 'pending'`. IT Admin cannot save a route that skips >1 rank unless the route's `kind = 'escalation'` — enforced by Zod + DB check constraint. Legit Chair-bypass cases use a first-class `Direct Escalation` template with required justification. Full design: `~/.claude/plans/when-a-sender-is-hidden-fiddle.md`.
 - **Session-refresh ordering is sacred.** In `lib/supabase/middleware.ts`, never insert code between `createServerClient()` and `supabase.auth.getUser()` — `@supabase/ssr` requires that ordering.
 - **Middleware skips auth when env vars are missing**, so a fresh checkout boots before `.env.local` is filled.
 - **Never commit secrets.** `.env.local` is gitignored; `.env.example` is the committed template.
@@ -154,7 +155,7 @@ npx shadcn@latest add <component>
 - **Button as link** — Base UI Button has no `asChild`. Use `<Link className={cn(buttonVariants({ size: 'sm' }))} href="..." />` instead.
 - **Server actions return shape** — `{ success: true }` or `{ success: false; error: string }`. Callers check `result.success` before toasting.
 - **Zod v4** — `z.record()` requires two args: `z.record(z.string(), z.unknown())`. Error message via `parsed.error.issues[0].message`.
-- **Tiptap v3** — `useEditor` with `shouldRerenderOnTransaction: true` keeps toolbar active-states reactive. Content in/out via `editor.getJSON()` / `content` prop (init only). Import type: `import type { JSONContent } from '@tiptap/core'`.
+- **Tiptap v3** — `useEditor` requires `immediatelyRender: false` (prevents SSR hydration mismatch) and `shouldRerenderOnTransaction: true` (keeps toolbar active-states reactive). Content in/out via `editor.getJSON()` / `content` prop (init only). Import type: `import type { JSONContent } from '@tiptap/core'`.
 - **Schema push flow** — edit `schema.ts` → `npm run db:push` → `npm run setup:rls` (new tables only) → `npm run seed` (idempotent).
 
 ## MCP servers

@@ -41,6 +41,21 @@ export async function createTemplateAction(
   return { success: true }
 }
 
+export async function assignRouteAction(templateId: string, routeId: string | null): Promise<ActionResult> {
+  const profile = await getCurrentUserProfile()
+  if (!profile || profile.role !== 'it_admin') {
+    return { success: false, error: 'Unauthorized' }
+  }
+
+  await db
+    .update(documentTemplates)
+    .set({ defaultRouteId: routeId ?? undefined, updatedAt: new Date() })
+    .where(eq(documentTemplates.id, templateId))
+
+  revalidatePath('/admin/templates')
+  return { success: true }
+}
+
 export async function deleteTemplateAction(id: string): Promise<ActionResult> {
   const profile = await getCurrentUserProfile()
   if (!profile || profile.role !== 'it_admin') {

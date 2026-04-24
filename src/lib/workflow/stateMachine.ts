@@ -7,9 +7,9 @@ type Status = (typeof documentStatus.enumValues)[number]
 
 const allowedTransitions: Record<Status, Status[]> = {
   draft: ['in_review'],
-  in_review: ['approved', 'rejected'],
+  in_review: ['approved', 'returned'],
   approved: ['archived'],
-  rejected: ['draft'],
+  returned: ['draft'],
   archived: [],
 }
 

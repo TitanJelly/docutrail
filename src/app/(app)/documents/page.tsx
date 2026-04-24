@@ -23,7 +23,7 @@ const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'outline' | 'dest
   draft: 'secondary',
   in_review: 'default',
   approved: 'outline',
-  rejected: 'destructive',
+  returned: 'destructive',
   archived: 'outline',
 }
 
@@ -79,14 +79,18 @@ export default async function DocumentsPage() {
               </TableRow>
             ) : (
               docs.map((doc) => (
-                <TableRow key={doc.id}>
-                  <TableCell className="font-medium">{doc.title}</TableCell>
+                <TableRow key={doc.id} className="cursor-pointer hover:bg-muted/50">
+                  <TableCell className="font-medium">
+                    <Link href={`/documents/${doc.id}`} className="block">
+                      {doc.title}
+                    </Link>
+                  </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {doc.templateName ?? '—'}
                   </TableCell>
                   <TableCell>
                     <Badge variant={STATUS_VARIANT[doc.currentStatus] ?? 'outline'}>
-                      {doc.currentStatus}
+                      {doc.currentStatus.replace('_', ' ')}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">

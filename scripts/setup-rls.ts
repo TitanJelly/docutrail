@@ -25,6 +25,7 @@ async function main() {
   for (const table of [
     'roles', 'offices', 'users', 'role_permissions',
     'document_templates', 'documents', 'document_versions',
+    'approval_routes', 'approval_steps', 'document_approvals',
   ]) {
     await sql.unsafe(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`)
     console.log(`  RLS enabled on ${table}`)
@@ -63,6 +64,16 @@ async function main() {
     ['documents', 'documents_update'],
     ['document_versions', 'document_versions_select'],
     ['document_versions', 'document_versions_insert'],
+    ['approval_routes', 'approval_routes_select'],
+    ['approval_routes', 'approval_routes_insert'],
+    ['approval_routes', 'approval_routes_update'],
+    ['approval_steps', 'approval_steps_select'],
+    ['approval_steps', 'approval_steps_insert'],
+    ['approval_steps', 'approval_steps_update'],
+    ['approval_steps', 'approval_steps_delete'],
+    ['document_approvals', 'document_approvals_select'],
+    ['document_approvals', 'document_approvals_insert'],
+    ['document_approvals', 'document_approvals_update'],
   ]
   for (const [table, policy] of policies) {
     await sql.unsafe(`DROP POLICY IF EXISTS "${policy}" ON ${table}`)
@@ -173,6 +184,72 @@ async function main() {
           )
       )
     )
+  `
+
+  // approval_routes: any authenticated user can read; manage_routes can write
+  await sql`
+    CREATE POLICY approval_routes_select ON approval_routes
+    FOR SELECT TO authenticated USING (deleted_at IS NULL)
+  `
+  await sql`
+    CREATE POLICY approval_routes_insert ON approval_routes
+    FOR INSERT TO authenticated
+    WITH CHECK (has_permission(auth.uid(), 'manage_routes'))
+  `
+  await sql`
+    CREATE POLICY approval_routes_update ON approval_routes
+    FOR UPDATE TO authenticated
+    USING (has_permission(auth.uid(), 'manage_routes'))
+    WITH CHECK (has_permission(auth.uid(), 'manage_routes'))
+  `
+
+  // approval_steps: readable by all authenticated; writable only by manage_routes
+  await sql`
+    CREATE POLICY approval_steps_select ON approval_steps
+    FOR SELECT TO authenticated USING (true)
+  `
+  await sql`
+    CREATE POLICY approval_steps_insert ON approval_steps
+    FOR INSERT TO authenticated
+    WITH CHECK (has_permission(auth.uid(), 'manage_routes'))
+  `
+  await sql`
+    CREATE POLICY approval_steps_update ON approval_steps
+    FOR UPDATE TO authenticated
+    USING (has_permission(auth.uid(), 'manage_routes'))
+    WITH CHECK (has_permission(auth.uid(), 'manage_routes'))
+  `
+  await sql`
+    CREATE POLICY approval_steps_delete ON approval_steps
+    FOR DELETE TO authenticated
+    USING (has_permission(auth.uid(), 'manage_routes'))
+  `
+
+  // document_approvals: INSERT blocked for all app roles (service role / Drizzle superuser writes)
+  await sql`
+    CREATE POLICY document_approvals_insert ON document_approvals
+    FOR INSERT TO authenticated
+    WITH CHECK (false)
+  `
+  // SELECT: assignee sees own rows; creator sees rows for their docs; read_all_documents sees all
+  await sql`
+    CREATE POLICY document_approvals_select ON document_approvals
+    FOR SELECT TO authenticated
+    USING (
+      assignee_id = auth.uid()
+      OR EXISTS (
+        SELECT 1 FROM documents d
+        WHERE d.id = document_id
+          AND (d.creator_id = auth.uid() OR has_permission(auth.uid(), 'read_all_documents'))
+      )
+    )
+  `
+  // UPDATE: only the assigned user can act on a pending row
+  await sql`
+    CREATE POLICY document_approvals_update ON document_approvals
+    FOR UPDATE TO authenticated
+    USING (assignee_id = auth.uid() AND status = 'pending')
+    WITH CHECK (assignee_id = auth.uid())
   `
 
   console.log('  Policies created')
