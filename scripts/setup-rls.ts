@@ -22,7 +22,10 @@ async function main() {
   })
 
   // Enable RLS
-  for (const table of ['roles', 'offices', 'users', 'role_permissions']) {
+  for (const table of [
+    'roles', 'offices', 'users', 'role_permissions',
+    'document_templates', 'documents', 'document_versions',
+  ]) {
     await sql.unsafe(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`)
     console.log(`  RLS enabled on ${table}`)
   }
@@ -52,6 +55,14 @@ async function main() {
     ['role_permissions', 'role_permissions_select'],
     ['users', 'users_select'],
     ['users', 'users_update'],
+    ['document_templates', 'document_templates_select'],
+    ['document_templates', 'document_templates_insert'],
+    ['document_templates', 'document_templates_update'],
+    ['documents', 'documents_select'],
+    ['documents', 'documents_insert'],
+    ['documents', 'documents_update'],
+    ['document_versions', 'document_versions_select'],
+    ['document_versions', 'document_versions_insert'],
   ]
   for (const [table, policy] of policies) {
     await sql.unsafe(`DROP POLICY IF EXISTS "${policy}" ON ${table}`)
@@ -81,6 +92,87 @@ async function main() {
     CREATE POLICY users_update ON users FOR UPDATE TO authenticated
     USING (has_permission(auth.uid(), 'manage_users'))
     WITH CHECK (has_permission(auth.uid(), 'manage_users'))
+  `
+
+  // document_templates: any authenticated user can read; only manage_templates can write
+  await sql`
+    CREATE POLICY document_templates_select ON document_templates
+    FOR SELECT TO authenticated USING (deleted_at IS NULL)
+  `
+  await sql`
+    CREATE POLICY document_templates_insert ON document_templates
+    FOR INSERT TO authenticated
+    WITH CHECK (has_permission(auth.uid(), 'manage_templates'))
+  `
+  await sql`
+    CREATE POLICY document_templates_update ON document_templates
+    FOR UPDATE TO authenticated
+    USING (has_permission(auth.uid(), 'manage_templates'))
+    WITH CHECK (has_permission(auth.uid(), 'manage_templates'))
+  `
+
+  // documents: creator sees own; read_all_documents roles see all
+  await sql`
+    CREATE POLICY documents_select ON documents
+    FOR SELECT TO authenticated
+    USING (
+      deleted_at IS NULL
+      AND (
+        creator_id = auth.uid()
+        OR has_permission(auth.uid(), 'read_all_documents')
+      )
+    )
+  `
+  // any authenticated user may insert, but creator_id must equal their uid
+  await sql`
+    CREATE POLICY documents_insert ON documents
+    FOR INSERT TO authenticated
+    WITH CHECK (creator_id = auth.uid())
+  `
+  // creator can update own draft; read_all_documents roles can update any
+  await sql`
+    CREATE POLICY documents_update ON documents
+    FOR UPDATE TO authenticated
+    USING (
+      creator_id = auth.uid()
+      OR has_permission(auth.uid(), 'read_all_documents')
+    )
+    WITH CHECK (
+      creator_id = auth.uid()
+      OR has_permission(auth.uid(), 'read_all_documents')
+    )
+  `
+
+  // document_versions: visible if the parent document is visible to the user
+  await sql`
+    CREATE POLICY document_versions_select ON document_versions
+    FOR SELECT TO authenticated
+    USING (
+      EXISTS (
+        SELECT 1 FROM documents d
+        WHERE d.id = document_id
+          AND d.deleted_at IS NULL
+          AND (
+            d.creator_id = auth.uid()
+            OR has_permission(auth.uid(), 'read_all_documents')
+          )
+      )
+    )
+  `
+  // only the document creator (or read_all_documents role) may insert versions
+  await sql`
+    CREATE POLICY document_versions_insert ON document_versions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+      EXISTS (
+        SELECT 1 FROM documents d
+        WHERE d.id = document_id
+          AND (
+            d.creator_id = auth.uid()
+            OR has_permission(auth.uid(), 'read_all_documents')
+          )
+      )
+    )
   `
 
   console.log('  Policies created')

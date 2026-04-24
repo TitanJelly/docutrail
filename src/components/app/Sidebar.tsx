@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { can, type Role, type Action } from '@/lib/rbac/permissions'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Users, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, FileText, LayoutTemplate, LogOut } from 'lucide-react'
 
 type NavItem = {
   href: string
@@ -22,10 +22,21 @@ const NAV: NavItem[] = [
     icon: <LayoutDashboard size={16} />,
   },
   {
+    href: '/documents',
+    label: 'Documents',
+    icon: <FileText size={16} />,
+  },
+  {
     href: '/admin/users',
     label: 'Users',
     icon: <Users size={16} />,
     requires: 'manage_users',
+  },
+  {
+    href: '/admin/templates',
+    label: 'Templates',
+    icon: <LayoutTemplate size={16} />,
+    requires: 'manage_templates',
   },
 ]
 

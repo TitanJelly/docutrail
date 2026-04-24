@@ -32,27 +32,34 @@ Web app for the **College of Computer Studies (CCS)** that replaces paper-based 
 ### Folder layout
 ```
 docutrail/
+├── public/
+│   ├── ccs-header.png             # CHMSU/CCS letterhead banner (header)
+│   └── ccs-footer.png             # CCS footer banner (contact + slogan)
 ├── scripts/
 │   ├── check-connection.ts        # smoke test REST + pooler
-│   ├── setup-rls.ts               # enable RLS + has_permission() + policies (run once after db:push)
-│   └── seed.ts                    # insert roles / offices / role_permissions
+│   ├── setup-rls.ts               # enable RLS + has_permission() + policies
+│   └── seed.ts                    # seed roles / offices / role_permissions
 └── src/
-    ├── middleware.ts              # gates routes via updateSession
+    ├── middleware.ts
     ├── app/
-    │   ├── layout.tsx             # root: fonts + <Toaster richColors />
-    │   ├── (auth)/login/          # public login page
-    │   └── (app)/                 # authenticated shell
-    │       ├── layout.tsx         # sidebar + auth guard
-    │       ├── dashboard/         # home page
-    │       └── admin/users/       # IT Admin: user list + create
+    │   ├── layout.tsx
+    │   ├── (auth)/login/
+    │   └── (app)/
+    │       ├── layout.tsx
+    │       ├── dashboard/
+    │       ├── documents/         # list + new-document page + server actions
+    │       │   └── new/
+    │       ├── admin/users/       # IT Admin user CRUD
+    │       └── admin/templates/   # IT Admin template CRUD
     ├── components/
-    │   ├── app/Sidebar.tsx        # role-gated nav + sign-out
+    │   ├── app/Sidebar.tsx
+    │   ├── editor/Tiptap.tsx      # rich-text editor (Phase 2)
     │   └── ui/                    # shadcn primitives
     └── lib/
         ├── supabase/              # client.ts, server.ts, admin.ts, middleware.ts
-        ├── db/                    # index.ts (Drizzle client + schema export), schema.ts
-        ├── user.ts                # React-cache getCurrentUserProfile() helper
-        ├── rbac/permissions.ts    # mirrors DB policies in TS
+        ├── db/                    # index.ts, schema.ts
+        ├── user.ts
+        ├── rbac/permissions.ts
         ├── pdf/                   # generate + stampSignature (Phase 4)
         └── workflow/stateMachine.ts (Phase 3)
 ```
@@ -139,14 +146,31 @@ Expected:
 npx shadcn@latest add <component>
 ```
 
-## Key patterns (Phase 1)
+## Key patterns
 
-- **User profile** — always fetch via `getCurrentUserProfile()` from `@/lib/user`. It is `React.cache()`-memoised per request, so layout + page can both call it without a double query.
-- **Auth guard** — `(app)/layout.tsx` redirects to `/login` when `getCurrentUserProfile()` returns `null`. The middleware handles the unauthenticated redirect earlier; the layout is a belt-and-suspenders check.
-- **Base UI dialogs** — shadcn Dialog is built on `@base-ui/react/dialog`, not Radix. Use the `render` prop instead of `asChild` to customise the trigger element: `<DialogTrigger render={<Button />} />`.
-- **Server actions return shape** — `{ success: true }` or `{ success: false; error: string }`. Callers check `result.success` before showing a toast.
-- **Zod v4** — use `parsed.error.issues[0].message` (not `.errors`); `z.string().email()` still works.
-- **Schema push flow for dev** — edit `schema.ts` → `npm run db:push` → `npm run setup:rls` (only needed when adding new tables) → `npm run seed` (idempotent).
+- **User profile** — always fetch via `getCurrentUserProfile()` from `@/lib/user`. `React.cache()`-memoised per request; layout + page share the result without a double query.
+- **Auth guard** — `(app)/layout.tsx` redirects to `/login` when profile is null. Middleware handles it first; layout is belt-and-suspenders.
+- **Base UI dialogs** — shadcn Dialog is built on `@base-ui/react/dialog`, not Radix. Use the `render` prop: `<DialogTrigger render={<Button />} />`. Same for `AlertDialogTrigger`.
+- **Button as link** — Base UI Button has no `asChild`. Use `<Link className={cn(buttonVariants({ size: 'sm' }))} href="..." />` instead.
+- **Server actions return shape** — `{ success: true }` or `{ success: false; error: string }`. Callers check `result.success` before toasting.
+- **Zod v4** — `z.record()` requires two args: `z.record(z.string(), z.unknown())`. Error message via `parsed.error.issues[0].message`.
+- **Tiptap v3** — `useEditor` with `shouldRerenderOnTransaction: true` keeps toolbar active-states reactive. Content in/out via `editor.getJSON()` / `content` prop (init only). Import type: `import type { JSONContent } from '@tiptap/core'`.
+- **Schema push flow** — edit `schema.ts` → `npm run db:push` → `npm run setup:rls` (new tables only) → `npm run seed` (idempotent).
+
+## MCP servers
+
+Project-scoped via `.mcp.json` (gitignored). Auto-start when a Claude Code session opens in this folder, terminate on session exit — no global registration.
+
+| Server | Purpose |
+|---|---|
+| `supabase` | SQL, migrations, RLS, Storage, logs (read-only by default; needs PAT) |
+| `context7` | Live docs for Next 16, Drizzle, Tiptap, `@react-pdf/renderer`, `pdf-lib` |
+| `github` | Issues, PRs, releases (needs PAT with `repo` scope) |
+| `shadcn` | Add / preview shadcn components |
+| `chrome-devtools` | Inspect running dev server: console, network, DOM |
+| `playwright` | E2E flows (login → draft → route → sign → audit) |
+
+Before first session: paste **Supabase PAT** (https://supabase.com/dashboard/account/tokens) and **GitHub PAT** (`repo` scope) into the placeholders in `.mcp.json`, then restart Claude Code.
 
 ## Testing & build
 

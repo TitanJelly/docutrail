@@ -4,6 +4,8 @@ import {
   uuid,
   text,
   boolean,
+  integer,
+  jsonb,
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core'
@@ -95,5 +97,57 @@ export const rolePermissions = pgTable(
   },
   (t) => ({
     roleActionUnique: unique().on(t.roleId, t.action),
+  }),
+)
+
+// ─── Phase 2 tables ──────────────────────────────────────────────────────────
+
+export const documentTemplates = pgTable('document_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  type: text('type').notNull(),
+  bodySchema: jsonb('body_schema'),       // Tiptap JSON template
+  headerHtml: text('header_html'),
+  footerHtml: text('footer_html'),
+  defaultRouteId: uuid('default_route_id'), // FK to approval_routes added in Phase 3
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+})
+
+export const documents = pgTable('documents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  title: text('title').notNull(),
+  templateId: uuid('template_id')
+    .references(() => documentTemplates.id)
+    .notNull(),
+  creatorId: uuid('creator_id')
+    .references(() => users.id)
+    .notNull(),
+  currentStatus: documentStatus('current_status').default('draft').notNull(),
+  currentStepId: uuid('current_step_id'), // FK to approval_steps added in Phase 3
+  routeId: uuid('route_id'),              // FK to approval_routes added in Phase 3
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+})
+
+export const documentVersions = pgTable(
+  'document_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id')
+      .references(() => documents.id)
+      .notNull(),
+    versionNo: integer('version_no').notNull(),
+    content: jsonb('content'),            // Tiptap JSON
+    generatedPdfPath: text('generated_pdf_path'),
+    createdBy: uuid('created_by')
+      .references(() => users.id)
+      .notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    docVersionUnique: unique().on(t.documentId, t.versionNo),
   }),
 )
