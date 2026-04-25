@@ -2,7 +2,7 @@
 
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { eq, asc, and, isNull } from 'drizzle-orm'
+import { eq, asc, and, isNull, desc } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   documents,
@@ -56,6 +56,52 @@ export async function createDocumentAction(data: {
 
   revalidatePath('/documents')
   return { success: true, documentId: doc.id }
+}
+
+type UpdateResult = { success: true } | { success: false; error: string }
+
+export async function updateDocumentAction(data: {
+  documentId: string
+  content: Record<string, unknown>
+}): Promise<UpdateResult> {
+  const profile = await getCurrentUserProfile()
+  if (!profile) return { success: false, error: 'Unauthorized' }
+
+  const [doc] = await db
+    .select({ creatorId: documents.creatorId, currentStatus: documents.currentStatus })
+    .from(documents)
+    .where(and(eq(documents.id, data.documentId), isNull(documents.deletedAt)))
+
+  if (!doc) return { success: false, error: 'Document not found' }
+  if (doc.creatorId !== profile.id) return { success: false, error: 'Unauthorized' }
+  if (doc.currentStatus !== 'draft' && doc.currentStatus !== 'returned') {
+    return { success: false, error: 'Only draft or returned documents can be edited' }
+  }
+
+  const [latest] = await db
+    .select({ versionNo: documentVersions.versionNo })
+    .from(documentVersions)
+    .where(eq(documentVersions.documentId, data.documentId))
+    .orderBy(desc(documentVersions.versionNo))
+    .limit(1)
+
+  const nextVersion = (latest?.versionNo ?? 0) + 1
+
+  await db.insert(documentVersions).values({
+    documentId: data.documentId,
+    versionNo: nextVersion,
+    content: data.content,
+    createdBy: profile.id,
+  })
+
+  await db
+    .update(documents)
+    .set({ updatedAt: new Date() })
+    .where(eq(documents.id, data.documentId))
+
+  revalidatePath(`/documents/${data.documentId}`)
+  revalidatePath('/documents')
+  return { success: true }
 }
 
 type SubmitResult = { success: true } | { success: false; error: string }

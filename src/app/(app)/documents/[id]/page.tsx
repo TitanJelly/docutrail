@@ -169,7 +169,12 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
 
         {/* Actions */}
         {(doc.currentStatus === 'draft' || doc.currentStatus === 'returned') && isCreator && (
-          <SubmitButton documentId={id} />
+          <div className="flex gap-2">
+            <Link href={`/documents/${id}/edit`}>
+              <Button variant="outline" size="sm">Edit</Button>
+            </Link>
+            <SubmitButton documentId={id} />
+          </div>
         )}
         {pendingApprovalForCurrentUser && (
           <ApprovalActions approvalId={pendingApprovalForCurrentUser} />

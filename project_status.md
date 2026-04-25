@@ -2,15 +2,15 @@
 
 > Living snapshot. Update after every meaningful change. Durable policy lives in `CLAUDE.md`.
 
-**Last updated:** 2026-04-24
+**Last updated:** 2026-04-25
 
 ---
 
 ## Current phase
 
-**Phase 3 — Approval routing engine: ✅ DONE**
+**Phase 3 — Approval routing engine: ✅ DONE (tested 2026-04-25)**
 
-Schema extended, RLS updated, route CRUD built, submit + approve + return actions wired, approval inbox and document detail page live.
+Schema pushed, RLS live, full approval workflow verified. Edit-after-return flow added. Phase 4 is next.
 
 ---
 
@@ -71,6 +71,9 @@ npm run seed
 
 ## Update log
 
+- **2026-04-25** — DB singleton pattern added to `lib/db/index.ts` (`globalThis` + `max: 5`) to fix `MaxClientsInSessionMode` pool exhaustion in dev.
+- **2026-04-25** — Fixed same SSR hydration mismatch in `TiptapViewer.tsx` (missed from 2026-04-24 fix).
+- **2026-04-25** — Added document edit flow: `updateDocumentAction`, `/documents/[id]/edit` page + `EditDocumentForm`. Creators can now revise content after a document is returned before re-submitting.
 - **2026-04-24** — Fixed Tiptap SSR hydration mismatch: added `immediatelyRender: false` to `useEditor` in `Tiptap.tsx`.
 - **2026-04-24** — Phase 3 complete: schema (approval_routes, approval_steps, document_approvals, roles.rank), RLS, route CRUD (/admin/routes), submit/approve/return actions, approval inbox (/approvals), document detail page (/documents/[id]).
 - **2026-04-24** — Document status: renamed `rejected` → `returned` (more appropriate for academic routing; per-step approvalStatus still uses `rejected`).

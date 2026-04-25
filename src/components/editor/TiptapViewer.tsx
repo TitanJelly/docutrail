@@ -9,6 +9,7 @@ export default function TiptapViewer({ content }: { content: JSONContent }) {
     extensions: [StarterKit],
     content,
     editable: false,
+    immediatelyRender: false,
     shouldRerenderOnTransaction: false,
   })
 
