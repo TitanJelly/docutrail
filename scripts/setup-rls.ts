@@ -25,7 +25,7 @@ async function main() {
   for (const table of [
     'roles', 'offices', 'users', 'role_permissions',
     'document_templates', 'documents', 'document_versions',
-    'approval_routes', 'approval_steps', 'document_approvals',
+    'approval_routes', 'approval_steps', 'signatures', 'document_approvals',
   ]) {
     await sql.unsafe(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`)
     console.log(`  RLS enabled on ${table}`)
@@ -74,6 +74,10 @@ async function main() {
     ['document_approvals', 'document_approvals_select'],
     ['document_approvals', 'document_approvals_insert'],
     ['document_approvals', 'document_approvals_update'],
+    ['signatures', 'signatures_select'],
+    ['signatures', 'signatures_insert'],
+    ['signatures', 'signatures_update'],
+    ['signatures', 'signatures_delete'],
   ]
   for (const [table, policy] of policies) {
     await sql.unsafe(`DROP POLICY IF EXISTS "${policy}" ON ${table}`)
@@ -250,6 +254,25 @@ async function main() {
     FOR UPDATE TO authenticated
     USING (assignee_id = auth.uid() AND status = 'pending')
     WITH CHECK (assignee_id = auth.uid())
+  `
+
+  // signatures: users see and manage only their own
+  await sql`
+    CREATE POLICY signatures_select ON signatures FOR SELECT TO authenticated
+    USING (user_id = auth.uid())
+  `
+  await sql`
+    CREATE POLICY signatures_insert ON signatures FOR INSERT TO authenticated
+    WITH CHECK (user_id = auth.uid())
+  `
+  await sql`
+    CREATE POLICY signatures_update ON signatures FOR UPDATE TO authenticated
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid())
+  `
+  await sql`
+    CREATE POLICY signatures_delete ON signatures FOR DELETE TO authenticated
+    USING (user_id = auth.uid())
   `
 
   console.log('  Policies created')

@@ -14,6 +14,7 @@ import {
   roles,
 } from '@/lib/db/schema'
 import { getCurrentUserProfile } from '@/lib/user'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 const createSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -232,6 +233,38 @@ export async function submitDocumentAction(documentId: string): Promise<SubmitRe
       updatedAt: now,
     })
     .where(eq(documents.id, documentId))
+
+  // Generate PDF (best-effort — submit succeeds even if PDF gen fails)
+  try {
+    const [latestVer] = await db
+      .select({ id: documentVersions.id, content: documentVersions.content })
+      .from(documentVersions)
+      .where(eq(documentVersions.documentId, documentId))
+      .orderBy(desc(documentVersions.versionNo))
+      .limit(1)
+
+    if (latestVer?.content) {
+      const { generateDocumentPdf } = await import('@/lib/pdf/generate')
+      const pdfBytes = await generateDocumentPdf({
+        title: doc.title,
+        contentJson: latestVer.content,
+      })
+
+      const supabase = createAdminClient()
+      const storagePath = `${documentId}/latest.pdf`
+      await supabase.storage.from('documents').upload(storagePath, pdfBytes, {
+        contentType: 'application/pdf',
+        upsert: true,
+      })
+
+      await db
+        .update(documentVersions)
+        .set({ generatedPdfPath: storagePath })
+        .where(eq(documentVersions.id, latestVer.id))
+    }
+  } catch (pdfErr) {
+    console.error('[PDF] generation failed (non-fatal):', pdfErr)
+  }
 
   revalidatePath('/documents')
   revalidatePath(`/documents/${documentId}`)

@@ -8,77 +8,65 @@
 
 ## Current phase
 
-**Phase 3 — Approval routing engine: ✅ DONE (tested 2026-04-25)**
+**Phase 4 — PDF generation + e-signatures: ✅ CODE DONE, DB push pending**
 
-Schema pushed, RLS live, full approval workflow verified. Edit-after-return flow added. Phase 4 is next.
+Run once to activate:
+```bash
+npm run db:push        # interactive — accept all changes
+npm run setup:rls
+npm run setup:storage  # creates documents + signatures Storage buckets
+```
 
 ---
 
 ## What exists
 
-| Area | Details |
+| Area | Status |
 |---|---|
-| **DB tables** | `roles` (+ `rank`), `offices`, `users`, `role_permissions` (Ph1) · `document_templates` (+ `default_route_id` FK), `documents` (+ `route_id`, `current_step_id` FKs), `document_versions` (Ph2) · `approval_routes`, `approval_steps`, `document_approvals` (Ph3) |
-| **Enums** | `document_status` (draft/in_review/approved/**returned**/archived), `approval_status`, `route_kind`, `office_scope` |
-| **Auth** | Supabase email+password · middleware + layout guard · `getCurrentUserProfile()` |
-| **RBAC** | RLS + `has_permission()` SQL fn · `permissions.ts` TS mirror |
-| **Pages** | `/login` · `/dashboard` · `/documents` · `/documents/new` · `/documents/[id]` · `/approvals` · `/admin/users` · `/admin/templates` · `/admin/routes` · `/admin/routes/[id]` |
-| **Editor** | `Tiptap.tsx` (edit) · `TiptapViewer.tsx` (read-only) |
-| **Routing engine** | `submitDocumentAction` resolves assignees by role + office_scope, inserts approval rows, flips status · `approveAction` advances steps or marks approved · `returnDocumentAction` returns to creator |
-| **Skip-rule** | Enforced in `createStepAction`: standard routes cannot skip >1 rank; office_staff steps are lateral-exempt; escalation routes bypass rule |
-| **Assets** | `public/ccs-header.png` + `public/ccs-footer.png` |
-| **Scripts** | `setup:rls` (now covers 10 tables), `seed` (now seeds role ranks), `db:push`, `check-connection` |
+| Scaffold, Supabase connectivity | ✅ Ph0 |
+| Auth (email+pw), RBAC, user provisioning | ✅ Ph1 |
+| Tiptap editor, document templates, draft save | ✅ Ph2 |
+| Approval routing engine (submit → review → approve/return) | ✅ Ph3 |
+| PDF generation on submit (`@react-pdf/renderer`) | ✅ Ph4 |
+| Signature CRUD (`/signatures`, draw/type/upload) | ✅ Ph4 |
+| Signature stamping on approve (`pdf-lib`) | ✅ Ph4 |
+| PDF download route `/documents/[id]/pdf` | ✅ Ph4 |
+| Audit trail hash-chain + `pg_cron` escalation | 🔜 Ph5 |
+| Document-scoped chat, archive, full-text search | 🔜 Ph6 |
+| PWA, analytics, CSV export, demo data | 🔜 Ph7 |
 
 ---
 
-## First-run setup (fresh Supabase project)
+## DB tables (all pushed except Phase 4 pending)
 
-```bash
-npm run db:push
-npm run setup:rls
-npm run seed
-# Then manually create the first it_admin via Supabase dashboard Auth → Users + SQL insert
-```
+`roles`, `offices`, `users`, `role_permissions` · `document_templates`, `documents`, `document_versions` · `approval_routes`, `approval_steps`, `document_approvals` · **`signatures`** (Ph4 — needs `db:push`)
+
+`document_approvals` gained `signature_id` FK in Ph4.
 
 ---
 
-## Pending — activate Phase 3 on database
+## Next — Phase 5: Audit trail + escalation
 
-Schema is code-complete but not yet pushed to Supabase. Run once:
-```bash
-npm run db:push
-npm run setup:rls
-npm run seed
-```
+- `audit_log` table (append-only, hash-chain via Postgres trigger)
+- `log_mutation()` trigger on all business tables
+- `escalation_rules` table + Supabase Edge Function + `pg_cron` hourly scan
+- `notifications` table + Realtime bell + Sonner toast
 
 ---
 
-## Next — Phase 4: PDF generation + e-signatures
+## Known issues / gotchas
 
-- `@react-pdf/renderer` CCS-header/footer template → generate PDF on submit
-- `signatures` CRUD (draw + typed + image upload to Supabase Storage)
-- `pdf-lib` stamps signature onto PDF at each approval step
-- Store `document_versions.generated_pdf_path` pointing to Supabase Storage
-
----
-
-## Known issues
-
-- First IT Admin requires manual Supabase dashboard creation (no self-signup by design).
-- Pooler hostname must be `aws-1-*` not `aws-0-*` — see `CLAUDE.md` constraints.
+- First IT Admin must be created manually in Supabase dashboard (no self-signup by design).
+- Pooler hostname **must be** `aws-1-*` not `aws-0-*` — project ref `wqldhpvzxrqcttwkigyi`, region `ap-southeast-1`.
+- `db:push` requires an interactive terminal — cannot be piped.
 
 ---
 
 ## Update log
 
-- **2026-04-25** — DB singleton pattern added to `lib/db/index.ts` (`globalThis` + `max: 5`) to fix `MaxClientsInSessionMode` pool exhaustion in dev.
-- **2026-04-25** — Fixed same SSR hydration mismatch in `TiptapViewer.tsx` (missed from 2026-04-24 fix).
-- **2026-04-25** — Added document edit flow: `updateDocumentAction`, `/documents/[id]/edit` page + `EditDocumentForm`. Creators can now revise content after a document is returned before re-submitting.
-- **2026-04-24** — Fixed Tiptap SSR hydration mismatch: added `immediatelyRender: false` to `useEditor` in `Tiptap.tsx`.
-- **2026-04-24** — Phase 3 complete: schema (approval_routes, approval_steps, document_approvals, roles.rank), RLS, route CRUD (/admin/routes), submit/approve/return actions, approval inbox (/approvals), document detail page (/documents/[id]).
-- **2026-04-24** — Document status: renamed `rejected` → `returned` (more appropriate for academic routing; per-step approvalStatus still uses `rejected`).
-- **2026-04-24** — Phase 3 design locked: template-bound routes, office-scoped assignees, hard-block skip-rule, dedicated `Direct Escalation` template. Plan: `~/.claude/plans/when-a-sender-is-hidden-fiddle.md`.
-- **2026-04-24** — Phase 2 complete: schema, RLS, Tiptap editor, template CRUD, new-document page, CCS images.
-- **2026-04-24** — MCPs configured (`.mcp.json`): Supabase, Context7, GitHub, shadcn, DevTools, Playwright.
+- **2026-04-25** — Phase 4 complete: `signatures` table, PDF generation on submit, signature stamp on approve, `/signatures` CRUD, `/documents/[id]/pdf` download, ApprovalActions upgraded with signature picker.
+- **2026-04-25** — DB singleton fix, TiptapViewer SSR fix, document edit-after-return flow.
+- **2026-04-24** — Phase 3 complete: approval routing engine, submit/approve/return, `/approvals` inbox.
+- **2026-04-24** — Phase 2 complete: Tiptap editor, template CRUD, new-document page.
 - **2026-04-23** — Phase 1 complete: auth, RBAC, user provisioning.
-- **2026-04-23** — Phase 0 verified: scaffold + connectivity smoke test green.
+- **2026-04-23** — Phase 0: scaffold + connectivity verified.

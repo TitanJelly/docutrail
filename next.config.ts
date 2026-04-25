@@ -1,7 +1,9 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
-  /* config options here */
-};
+  // @react-pdf/renderer must not be webpack-bundled for the server.
+  // It uses Node.js-only APIs (fs, canvas) and has its own React reconciler.
+  serverExternalPackages: ['@react-pdf/renderer'],
+}
 
-export default nextConfig;
+export default nextConfig

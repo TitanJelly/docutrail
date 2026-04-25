@@ -187,6 +187,18 @@ export const documentVersions = pgTable(
   }),
 )
 
+// ─── Phase 4: signatures ─────────────────────────────────────────────────────
+
+export const signatures = pgTable('signatures', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .references(() => users.id, { onDelete: 'cascade' })
+    .notNull(),
+  type: signatureType('type').notNull(),
+  dataPath: text('data_path').notNull(), // Supabase Storage path: {userId}/{id}.png
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
 // ─── Phase 3 approval table ───────────────────────────────────────────────────
 
 export const documentApprovals = pgTable('document_approvals', {
@@ -202,6 +214,7 @@ export const documentApprovals = pgTable('document_approvals', {
     .notNull(),
   status: approvalStatus('status').default('pending').notNull(),
   actedAt: timestamp('acted_at', { withTimezone: true }),
+  signatureId: uuid('signature_id').references(() => signatures.id, { onDelete: 'set null' }),
   comment: text('comment'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })

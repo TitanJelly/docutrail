@@ -47,21 +47,26 @@ docutrail/
     │   └── (app)/
     │       ├── layout.tsx
     │       ├── dashboard/
-    │       ├── documents/         # list + new-document page + server actions
-    │       │   └── new/
+    │       ├── documents/         # list + new-document + [id] detail + [id]/pdf download
+    │       │   ├── new/
+    │       │   └── [id]/edit/
+    │       ├── approvals/         # inbox + approve/return actions
+    │       ├── signatures/        # user signature CRUD (Phase 4)
     │       ├── admin/users/       # IT Admin user CRUD
-    │       └── admin/templates/   # IT Admin template CRUD
+    │       ├── admin/templates/   # IT Admin template CRUD
+    │       └── admin/routes/      # approval route + step designer
     ├── components/
     │   ├── app/Sidebar.tsx
-    │   ├── editor/Tiptap.tsx      # rich-text editor (Phase 2)
+    │   ├── editor/Tiptap.tsx      # rich-text editor
+    │   ├── signature/SignaturePad.tsx  # draw/type/upload (Phase 4)
     │   └── ui/                    # shadcn primitives
     └── lib/
         ├── supabase/              # client.ts, server.ts, admin.ts, middleware.ts
         ├── db/                    # index.ts, schema.ts
         ├── user.ts
         ├── rbac/permissions.ts
-        ├── pdf/                   # generate + stampSignature (Phase 4)
-        └── workflow/stateMachine.ts (Phase 3)
+        ├── pdf/                   # CCSDocument.tsx + generate.ts + stampSignature.ts (Phase 4)
+        └── workflow/stateMachine.ts
 ```
 
 ## Design & style guidelines
@@ -129,6 +134,7 @@ npm run db:push       # drizzle-kit push      (direct push, skip migration files
 npm run db:studio     # drizzle-kit studio    (DB GUI)
 
 npm run setup:rls     # run scripts/setup-rls.ts  — enable RLS + policies (once per fresh DB)
+npm run setup:storage # run scripts/setup-storage.ts — create documents + signatures buckets (Phase 4)
 npm run seed          # run scripts/seed.ts        — seed roles / offices / permissions
 ```
 
@@ -156,7 +162,10 @@ npx shadcn@latest add <component>
 - **Server actions return shape** — `{ success: true }` or `{ success: false; error: string }`. Callers check `result.success` before toasting.
 - **Zod v4** — `z.record()` requires two args: `z.record(z.string(), z.unknown())`. Error message via `parsed.error.issues[0].message`.
 - **Tiptap v3** — `useEditor` requires `immediatelyRender: false` (prevents SSR hydration mismatch) and `shouldRerenderOnTransaction: true` (keeps toolbar active-states reactive). Content in/out via `editor.getJSON()` / `content` prop (init only). Import type: `import type { JSONContent } from '@tiptap/core'`.
-- **Schema push flow** — edit `schema.ts` → `npm run db:push` → `npm run setup:rls` (new tables only) → `npm run seed` (idempotent).
+- **Schema push flow** — edit `schema.ts` → `npm run db:push` (interactive) → `npm run setup:rls` → `npm run seed` (idempotent). For Phase 4+ also run `npm run setup:storage` once.
+- **PDF generation** — `generateDocumentPdf()` in `lib/pdf/generate.ts` calls `renderToBuffer` server-side via `React.createElement(CCSDocument, ...)`. `@react-pdf/renderer` is in `serverExternalPackages` so webpack never bundles it for the browser. Generated PDF uploaded to `documents/{docId}/latest.pdf` in Supabase Storage using the admin client.
+- **Signature stamping** — `stampSignatureOnPdf()` in `lib/pdf/stampSignature.ts` uses `pdf-lib`. Step 1 stamps at x=30, step 2 at x=160, etc. (130pt spacing), y=38pt from bottom of last page. Overwrites the same `latest.pdf` path in Storage.
+- **Storage operations** — always use `createAdminClient()` (service role) for Storage upload/download in server actions; browser never touches Storage directly.
 
 ## MCP servers
 

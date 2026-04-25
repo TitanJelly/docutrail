@@ -13,6 +13,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "setup:rls": "tsx --env-file=.env.local scripts/setup-rls.ts",
+    "setup:storage": "tsx --env-file=.env.local scripts/setup-storage.ts",
     "seed": "tsx --env-file=.env.local scripts/seed.ts"
   },
   "dependencies": {

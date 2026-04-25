@@ -13,10 +13,12 @@ import {
   roles,
   offices,
   users,
+  signatures,
 } from '@/lib/db/schema'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, CheckCircle, Clock, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle, Clock, Download, XCircle } from 'lucide-react'
 import Image from 'next/image'
 import type { JSONContent } from '@tiptap/core'
 import TiptapViewer from '@/components/editor/TiptapViewer'
@@ -61,13 +63,35 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
   const isCreator = doc.creatorId === profile.id
   const hasReadAll = ['it_admin', 'dean', 'exec_director', 'dept_chair'].includes(profile.role)
 
-  // Latest version content
+  // Latest version — content + PDF path in one query
   const [latestVersion] = await db
-    .select({ content: documentVersions.content })
+    .select({
+      content: documentVersions.content,
+      generatedPdfPath: documentVersions.generatedPdfPath,
+    })
     .from(documentVersions)
     .where(eq(documentVersions.documentId, id))
     .orderBy(desc(documentVersions.versionNo))
     .limit(1)
+
+  const hasPdf = !!latestVersion?.generatedPdfPath
+
+  // User's saved signatures (passed to ApprovalActions for the signature picker)
+  const userSigRows = await db
+    .select({ id: signatures.id, type: signatures.type, dataPath: signatures.dataPath })
+    .from(signatures)
+    .where(eq(signatures.userId, profile.id))
+    .orderBy(desc(signatures.createdAt))
+
+  const supabase = createAdminClient()
+  const userSignatures = await Promise.all(
+    userSigRows.map(async (sig) => {
+      const { data } = await supabase.storage
+        .from('signatures')
+        .createSignedUrl(sig.dataPath, 3600)
+      return { id: sig.id, type: sig.type, signedUrl: data?.signedUrl ?? '' }
+    }),
+  )
 
   // Approval chain (all steps in route order with their approval rows)
   let chain: {
@@ -168,17 +192,30 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
         </div>
 
         {/* Actions */}
-        {(doc.currentStatus === 'draft' || doc.currentStatus === 'returned') && isCreator && (
-          <div className="flex gap-2">
-            <Link href={`/documents/${id}/edit`}>
-              <Button variant="outline" size="sm">Edit</Button>
+        <div className="flex items-center gap-2">
+          {hasPdf && (
+            <Link href={`/documents/${id}/pdf`} target="_blank">
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Download size={13} />
+                PDF
+              </Button>
             </Link>
-            <SubmitButton documentId={id} />
-          </div>
-        )}
-        {pendingApprovalForCurrentUser && (
-          <ApprovalActions approvalId={pendingApprovalForCurrentUser} />
-        )}
+          )}
+          {(doc.currentStatus === 'draft' || doc.currentStatus === 'returned') && isCreator && (
+            <>
+              <Link href={`/documents/${id}/edit`}>
+                <Button variant="outline" size="sm">Edit</Button>
+              </Link>
+              <SubmitButton documentId={id} />
+            </>
+          )}
+          {pendingApprovalForCurrentUser && (
+            <ApprovalActions
+              approvalId={pendingApprovalForCurrentUser}
+              userSignatures={userSignatures}
+            />
+          )}
+        </div>
       </div>
 
       {/* Document content */}
