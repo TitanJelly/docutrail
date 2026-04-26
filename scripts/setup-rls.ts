@@ -26,6 +26,7 @@ async function main() {
     'roles', 'offices', 'users', 'role_permissions',
     'document_templates', 'documents', 'document_versions',
     'approval_routes', 'approval_steps', 'signatures', 'document_approvals',
+    'escalation_rules', 'notifications', 'audit_log',
   ]) {
     await sql.unsafe(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`)
     console.log(`  RLS enabled on ${table}`)
@@ -78,6 +79,13 @@ async function main() {
     ['signatures', 'signatures_insert'],
     ['signatures', 'signatures_update'],
     ['signatures', 'signatures_delete'],
+    ['escalation_rules', 'escalation_rules_select'],
+    ['escalation_rules', 'escalation_rules_insert'],
+    ['escalation_rules', 'escalation_rules_update'],
+    ['escalation_rules', 'escalation_rules_delete'],
+    ['notifications', 'notifications_select'],
+    ['notifications', 'notifications_update'],
+    ['audit_log', 'audit_log_select'],
   ]
   for (const [table, policy] of policies) {
     await sql.unsafe(`DROP POLICY IF EXISTS "${policy}" ON ${table}`)
@@ -174,7 +182,7 @@ async function main() {
       )
     )
   `
-  // only the document creator (or read_all_documents role) may insert versions
+  // L11 fix: only the document creator may insert versions (admins use re-draft workflow)
   await sql`
     CREATE POLICY document_versions_insert ON document_versions
     FOR INSERT TO authenticated
@@ -182,10 +190,7 @@ async function main() {
       EXISTS (
         SELECT 1 FROM documents d
         WHERE d.id = document_id
-          AND (
-            d.creator_id = auth.uid()
-            OR has_permission(auth.uid(), 'read_all_documents')
-          )
+          AND d.creator_id = auth.uid()
       )
     )
   `
@@ -273,6 +278,54 @@ async function main() {
   await sql`
     CREATE POLICY signatures_delete ON signatures FOR DELETE TO authenticated
     USING (user_id = auth.uid())
+  `
+
+  // ── Phase 5: escalation_rules ────────────────────────────────────────────────
+  // Any authenticated user can read rules (needed to display SLA info)
+  await sql`
+    CREATE POLICY escalation_rules_select ON escalation_rules
+    FOR SELECT TO authenticated USING (true)
+  `
+  await sql`
+    CREATE POLICY escalation_rules_insert ON escalation_rules
+    FOR INSERT TO authenticated
+    WITH CHECK (has_permission(auth.uid(), 'manage_escalation_rules'))
+  `
+  await sql`
+    CREATE POLICY escalation_rules_update ON escalation_rules
+    FOR UPDATE TO authenticated
+    USING (has_permission(auth.uid(), 'manage_escalation_rules'))
+    WITH CHECK (has_permission(auth.uid(), 'manage_escalation_rules'))
+  `
+  await sql`
+    CREATE POLICY escalation_rules_delete ON escalation_rules
+    FOR DELETE TO authenticated
+    USING (has_permission(auth.uid(), 'manage_escalation_rules'))
+  `
+
+  // ── Phase 5: notifications ────────────────────────────────────────────────
+  // Users see only their own notifications; INSERT is service-role-only (Edge Fn)
+  await sql`
+    CREATE POLICY notifications_select ON notifications
+    FOR SELECT TO authenticated USING (user_id = auth.uid())
+  `
+  // Only UPDATE allowed for authenticated users (to mark read_at)
+  await sql`
+    CREATE POLICY notifications_update ON notifications
+    FOR UPDATE TO authenticated
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid())
+  `
+
+  // ── Phase 5: audit_log ───────────────────────────────────────────────────
+  // SELECT restricted to users with view_audit_log permission
+  // No INSERT/UPDATE/DELETE policies for authenticated → app layer fully blocked
+  // The log_mutation() trigger uses SECURITY DEFINER and runs as the DB owner,
+  // which bypasses RLS entirely.
+  await sql`
+    CREATE POLICY audit_log_select ON audit_log
+    FOR SELECT TO authenticated
+    USING (has_permission(auth.uid(), 'view_audit_log'))
   `
 
   console.log('  Policies created')

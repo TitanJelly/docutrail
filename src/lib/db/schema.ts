@@ -54,6 +54,8 @@ export const notificationKind = pgEnum('notification_kind', [
 
 export const routeKind = pgEnum('route_kind', ['standard', 'escalation'])
 
+export const escalationLevel = pgEnum('escalation_level', ['L1', 'L2', 'L3'])
+
 export const officeScopeEnum = pgEnum('office_scope', [
   'creator_office',
   'specific_office',
@@ -216,5 +218,60 @@ export const documentApprovals = pgTable('document_approvals', {
   actedAt: timestamp('acted_at', { withTimezone: true }),
   signatureId: uuid('signature_id').references(() => signatures.id, { onDelete: 'set null' }),
   comment: text('comment'),
+  // L9: track highest escalation level reached (circuit-breaker)
+  escalatedLevel: escalationLevel('escalated_level'),
+  // L10: record which document snapshot was actually approved
+  approvedVersionId: uuid('approved_version_id').references(() => documentVersions.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+// ─── Phase 5 tables ──────────────────────────────────────────────────────────
+
+// Configurable SLA thresholds per route (or global when route_id IS NULL)
+export const escalationRules = pgTable('escalation_rules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  routeId: uuid('route_id').references(() => approvalRoutes.id), // null = global default
+  level: escalationLevel('level').notNull(),
+  hoursOverdue: integer('hours_overdue').notNull(),
+  notifyRoleId: uuid('notify_role_id').references(() => roles.id).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+// Persisted in-app notifications (source of truth; Realtime is delivery only)
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    documentId: uuid('document_id').references(() => documents.id, { onDelete: 'cascade' }),
+    documentApprovalId: uuid('document_approval_id').references(() => documentApprovals.id, {
+      onDelete: 'cascade',
+    }),
+    kind: notificationKind('kind').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    // Unique per (approval, level, user) — prevents duplicate escalation spam (L6)
+    approvalKindUserUnique: unique().on(t.documentApprovalId, t.kind, t.userId),
+  }),
+)
+
+// Append-only audit log — INSERT only; UPDATE/DELETE blocked via RLS
+export const auditLog = pgTable('audit_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  actorId: uuid('actor_id'),                    // null for system/trigger-generated entries
+  action: text('action').notNull(),             // INSERT | UPDATE | DELETE
+  resourceType: text('resource_type').notNull(), // table name
+  resourceId: uuid('resource_id'),
+  before: jsonb('before'),
+  after: jsonb('after'),
+  ip: text('ip'),
+  userAgent: text('user_agent'),
+  prevHash: text('prev_hash'),                  // hash of previous row for this resource
+  rowHash: text('row_hash').notNull(),          // md5 of this row's content + prev_hash
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })

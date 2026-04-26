@@ -46,6 +46,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'manage_routes',
     'manage_users',
     'view_audit_log',
+    'manage_escalation_rules',
   ],
   dean: ['read_all_documents', 'approve_document', 'view_audit_log'],
   exec_director: ['read_all_documents', 'approve_document', 'view_audit_log'],
@@ -87,6 +88,30 @@ async function main() {
         .values({ roleId: role.id, action, resource: '*' })
         .onConflictDoNothing()
     }
+  }
+
+  // Seed default escalation rules (global — route_id IS NULL)
+  console.log('Seeding default escalation rules…')
+  const allRoles2 = await db.select().from(schema.roles)
+  const findRole = (name: string) => allRoles2.find((r) => r.name === name)
+
+  const defaultRules: Array<{
+    level: 'L1' | 'L2' | 'L3'
+    hoursOverdue: number
+    roleName: string
+  }> = [
+    { level: 'L1', hoursOverdue: 24, roleName: 'faculty' },     // reminder to assignee's role proxy
+    { level: 'L2', hoursOverdue: 48, roleName: 'dept_chair' },  // supervisor notified
+    { level: 'L3', hoursOverdue: 72, roleName: 'dean' },        // final escalation
+  ]
+
+  for (const rule of defaultRules) {
+    const role = findRole(rule.roleName)
+    if (!role) { console.warn(`  Role ${rule.roleName} not found — skipping`); continue }
+    await db
+      .insert(schema.escalationRules)
+      .values({ level: rule.level, hoursOverdue: rule.hoursOverdue, notifyRoleId: role.id })
+      .onConflictDoNothing()
   }
 
   console.log('Seed complete.')

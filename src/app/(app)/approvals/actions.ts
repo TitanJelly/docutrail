@@ -33,6 +33,7 @@ export async function approveAction(
 
   const { approvalId, comment, signatureId } = parsed.data
 
+  // ── 1. Load & verify the approval row ───────────────────────────────────────
   const [approval] = await db
     .select()
     .from(documentApprovals)
@@ -55,86 +56,7 @@ export async function approveAction(
     return { success: false, error: 'This step is not the current active step' }
   }
 
-  const now = new Date()
-
-  // Mark this approval row done (include signatureId so we can trace who signed)
-  await db
-    .update(documentApprovals)
-    .set({
-      status: 'approved',
-      actedAt: now,
-      comment: comment ?? null,
-      signatureId: signatureId ?? null,
-    })
-    .where(eq(documentApprovals.id, approvalId))
-
-  // Stamp signature onto the PDF (best-effort — advance even if stamp fails)
-  if (signatureId) {
-    try {
-      const [currentStep] = await db
-        .select({ orderIndex: approvalSteps.orderIndex })
-        .from(approvalSteps)
-        .where(eq(approvalSteps.id, approval.stepId))
-
-      const [latestVer] = await db
-        .select({ generatedPdfPath: documentVersions.generatedPdfPath })
-        .from(documentVersions)
-        .where(eq(documentVersions.documentId, approval.documentId))
-        .orderBy(desc(documentVersions.versionNo))
-        .limit(1)
-
-      const pdfPath = latestVer?.generatedPdfPath
-
-      if (currentStep && pdfPath) {
-        const [sig] = await db
-          .select({ dataPath: signatures.dataPath })
-          .from(signatures)
-          .where(eq(signatures.id, signatureId))
-
-        if (sig?.dataPath) {
-          const supabase = createAdminClient()
-
-          const { data: pdfBlob } = await supabase.storage
-            .from('documents')
-            .download(pdfPath)
-          const { data: sigBlob } = await supabase.storage
-            .from('signatures')
-            .download(sig.dataPath)
-
-          if (pdfBlob && sigBlob) {
-            const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer())
-            const sigBytes = new Uint8Array(await sigBlob.arrayBuffer())
-
-            // Signatures are stamped near the bottom of the last page.
-            // Each step gets its own horizontal slot (130pt apart, 110pt wide).
-            const orderIndex = currentStep.orderIndex
-            const x = 30 + (orderIndex - 1) * 130
-            const y = 38  // 38pt from bottom — just above the CCS footer banner
-            const { stampSignatureOnPdf } = await import('@/lib/pdf/stampSignature')
-
-            const stamped = await stampSignatureOnPdf({
-              pdfBytes,
-              signatureBytes: sigBytes,
-              page: -1,
-              x,
-              y,
-              width: 110,
-              height: 40,
-            })
-
-            await supabase.storage.from('documents').upload(pdfPath, stamped, {
-              contentType: 'application/pdf',
-              upsert: true,
-            })
-          }
-        }
-      }
-    } catch (stampErr) {
-      console.error('[PDF] signature stamp failed (non-fatal):', stampErr)
-    }
-  }
-
-  // Determine next step
+  // ── 2. Fetch step info (needed for stamp position and next-step logic) ───────
   const [currentStep] = await db
     .select({ orderIndex: approvalSteps.orderIndex, routeId: approvalSteps.routeId })
     .from(approvalSteps)
@@ -142,13 +64,111 @@ export async function approveAction(
 
   if (!currentStep) return { success: false, error: 'Step not found' }
 
-  const nextSteps = await db
+  // ── 3. Fetch latest version (L10: record which snapshot was approved) ────────
+  const [latestVer] = await db
+    .select({ id: documentVersions.id, generatedPdfPath: documentVersions.generatedPdfPath })
+    .from(documentVersions)
+    .where(eq(documentVersions.documentId, approval.documentId))
+    .orderBy(desc(documentVersions.versionNo))
+    .limit(1)
+
+  // ── 4. Stamp signature BEFORE any DB write (L5: fatal on failure) ────────────
+  // The approval is not written to the DB until the stamp succeeds.
+  // If stamping fails, the function returns an error and the approval stays pending.
+  if (signatureId) {
+    const [sig] = await db
+      .select({ dataPath: signatures.dataPath })
+      .from(signatures)
+      .where(eq(signatures.id, signatureId))
+
+    if (!sig?.dataPath) return { success: false, error: 'Signature not found' }
+
+    const pdfPath = latestVer?.generatedPdfPath
+    if (!pdfPath) {
+      return {
+        success: false,
+        error: 'No PDF found for this document. Re-submit the document to regenerate it.',
+      }
+    }
+
+    const supabase = createAdminClient()
+
+    const { data: pdfBlob, error: pdfErr } = await supabase.storage
+      .from('documents')
+      .download(pdfPath)
+    if (pdfErr || !pdfBlob) {
+      return {
+        success: false,
+        error: `Could not load PDF for stamping: ${pdfErr?.message ?? 'unknown error'}`,
+      }
+    }
+
+    const { data: sigBlob, error: sigErr } = await supabase.storage
+      .from('signatures')
+      .download(sig.dataPath)
+    if (sigErr || !sigBlob) {
+      return {
+        success: false,
+        error: `Could not load signature image: ${sigErr?.message ?? 'unknown error'}`,
+      }
+    }
+
+    const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer())
+    const sigBytes = new Uint8Array(await sigBlob.arrayBuffer())
+
+    // Each step's signature occupies its own 130pt-wide horizontal slot
+    const x = 30 + (currentStep.orderIndex - 1) * 130
+    const y = 38 // 38pt from bottom — just above the CCS footer banner
+
+    let stamped: Uint8Array
+    try {
+      const { stampSignatureOnPdf } = await import('@/lib/pdf/stampSignature')
+      stamped = await stampSignatureOnPdf({
+        pdfBytes,
+        signatureBytes: sigBytes,
+        page: -1,
+        x,
+        y,
+        width: 110,
+        height: 40,
+      })
+    } catch (stampErr) {
+      return {
+        success: false,
+        error: `Signature stamping failed: ${stampErr instanceof Error ? stampErr.message : 'unknown error'}`,
+      }
+    }
+
+    const { error: uploadErr } = await supabase.storage
+      .from('documents')
+      .upload(pdfPath, stamped, { contentType: 'application/pdf', upsert: true })
+    if (uploadErr) {
+      return { success: false, error: `Failed to upload stamped PDF: ${uploadErr.message}` }
+    }
+  }
+
+  // ── 5. DB writes — only reached after stamp succeeds (or no signature) ───────
+  const now = new Date()
+
+  await db
+    .update(documentApprovals)
+    .set({
+      status: 'approved',
+      actedAt: now,
+      comment: comment ?? null,
+      signatureId: signatureId ?? null,
+      approvedVersionId: latestVer?.id ?? null, // L10
+    })
+    .where(eq(documentApprovals.id, approvalId))
+
+  // ── 6. Advance document to next step or mark fully approved ─────────────────
+  const allSteps = await db
     .select({ id: approvalSteps.id, orderIndex: approvalSteps.orderIndex })
     .from(approvalSteps)
     .where(eq(approvalSteps.routeId, currentStep.routeId))
     .orderBy(asc(approvalSteps.orderIndex))
 
-  const nextStep = nextSteps.find((s) => s.orderIndex > currentStep.orderIndex)
+  const nextStep = allSteps.find((s) => s.orderIndex > currentStep.orderIndex)
 
   if (nextStep) {
     await db

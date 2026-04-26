@@ -121,7 +121,7 @@ export default function AddStepDialog({ routeId, nextOrderIndex, roles, offices 
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="creator_office">Creator's office</SelectItem>
+                    <SelectItem value="creator_office">Creator&apos;s office</SelectItem>
                     <SelectItem value="specific_office">Specific office</SelectItem>
                     <SelectItem value="any">Any (no office filter)</SelectItem>
                   </SelectContent>

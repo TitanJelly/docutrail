@@ -17,6 +17,7 @@ export type Action =
   | 'manage_routes'
   | 'manage_users'
   | 'view_audit_log'
+  | 'manage_escalation_rules'
 
 export const permissions: Record<Role, Action[]> = {
   it_admin: [
@@ -26,6 +27,7 @@ export const permissions: Record<Role, Action[]> = {
     'manage_routes',
     'manage_users',
     'view_audit_log',
+    'manage_escalation_rules',
   ],
   dean: ['read_all_documents', 'approve_document', 'view_audit_log'],
   exec_director: ['read_all_documents', 'approve_document', 'view_audit_log'],

@@ -273,7 +273,7 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
                         <span className="ml-1 text-muted-foreground">({step.officeName})</span>
                       )}
                       {step.officeScope === 'creator_office' && (
-                        <span className="ml-1 text-muted-foreground">(creator's office)</span>
+                        <span className="ml-1 text-muted-foreground">(creator&apos;s office)</span>
                       )}
                     </div>
                     {step.assigneeName && (
@@ -285,7 +285,7 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
                       </div>
                     )}
                     {step.comment && (
-                      <div className="mt-1 text-muted-foreground italic">"{step.comment}"</div>
+                      <div className="mt-1 text-muted-foreground italic">&ldquo;{step.comment}&rdquo;</div>
                     )}
                   </div>
                 </li>
