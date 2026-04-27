@@ -2,13 +2,13 @@
 
 > Living snapshot. Update after every meaningful change. Durable policy lives in `CLAUDE.md`.
 
-**Last updated:** 2026-04-26
+**Last updated:** 2026-04-27
 
 ---
 
 ## Current phase
 
-**Phase 6 — Chat + uploads + archive**
+**Phase 7 — Polish, extras, defense prep**
 
 ---
 
@@ -26,24 +26,27 @@
 | PDF download route `/documents/[id]/pdf` | ✅ Ph4 |
 | Audit trail hash-chain + `pg_cron` escalation | ✅ Ph5 |
 | Notification bell + Realtime + Sonner toasts | ✅ Ph5 |
-| Document-scoped chat, archive, full-text search | 🔜 Ph6 |
+| Document-scoped chat (Realtime) + Archive button | ✅ Ph6 |
+| PDF upload path (bypass editor) | ✅ Ph6 |
+| Document search (title ilike) + status filter tabs | ✅ Ph6 |
 | PWA, analytics, CSV export, demo data | 🔜 Ph7 |
 
 ---
 
-## DB tables (all pushed except Phase 5 pending)
+## DB tables
 
-`roles`, `offices`, `users`, `role_permissions` · `document_templates`, `documents`, `document_versions` · `approval_routes`, `approval_steps`, `document_approvals` · `signatures` · `escalation_rules`, `notifications`, `audit_log`
+`roles`, `offices`, `users`, `role_permissions` · `document_templates`, `documents`, `document_versions` · `approval_routes`, `approval_steps`, `document_approvals` · `signatures` · `escalation_rules`, `notifications`, `audit_log` · `chat_messages`
 
-`document_approvals` gained `escalated_level` + `approved_version_id` in Ph5.
+`chat_messages`: `id`, `document_id`, `sender_id`, `recipient_id` (null = group), `body`, `created_at`. Realtime-enabled; RLS: sender/recipient/group-participant access.
 
 ---
 
-## Next — Phase 6: Chat + uploads + archive
+## Next — Phase 7: Polish, extras, defense prep
 
-- Document-scoped chat (group + private DM)
-- PDF/DOCX upload path (bypass editor for external docs)
-- Archived bucket + read-only view + full-text search on archived docs
+- Responsive PWA manifest + service worker (`next-pwa` or manual)
+- Analytics dashboard (Recharts): doc volume, avg approval time, bottleneck office
+- CSV export of audit log
+- Seed demo data (8 roles × realistic docs) + user guide + deployment doc
 
 ---
 
@@ -64,6 +67,7 @@
 
 ## Update log
 
+- **2026-04-27** — Phase 6 complete: `chat_messages` table pushed + RLS/Realtime live; `DocumentChat` Realtime component; `ChatPanel`; `ArchiveButton` (approved → archived); `uploadDocumentAction` (PDF upload); `DocumentsFilter` (status tabs + title `ilike` search); Sidebar Archive link.
 - **2026-04-26** — Phase 5 DB wiring complete: `triggers.sql` applied (`log_mutation()` audit triggers on all business tables, `enforce_document_status_transition`, `audit_verify` view, `get_overdue_approvals()` RPC); `pg_cron` + `pg_net` extensions enabled; `escalation-scanner` Edge Function deployed; hourly `pg_cron` schedule created (job id 1). Supabase CLI v2.90.0 installed to `%LOCALAPPDATA%\supabase\`.
 - **2026-04-26** — Phase 5 complete: `audit_log` + `notifications` + `escalation_rules` tables; `log_mutation()` hash-chain trigger; status-transition trigger (L7); `audit_verify` view; `escalation-scanner` Edge Function with circuit-breaker + idempotency (L2/L6); `NotificationBell` Realtime component + Sonner toasts; stamp failure made fatal (L5); `approvedVersionId` on approvals (L10); `manage_escalation_rules` permission; L11 RLS fix; pre-existing lint errors fixed.
 - **2026-04-25** — Phase 4 complete: `signatures` table, PDF generation on submit, signature stamp on approve, `/signatures` CRUD, `/documents/[id]/pdf` download, ApprovalActions upgraded with signature picker.

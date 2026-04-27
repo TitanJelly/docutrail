@@ -1,4 +1,4 @@
-@AGENTS.md
+﻿@AGENTS.md
 
 # DocuTrail
 
@@ -47,9 +47,11 @@ docutrail/
     │   └── (app)/
     │       ├── layout.tsx
     │       ├── dashboard/
-    │       ├── documents/         # list + new-document + [id] detail + [id]/pdf download
-    │       │   ├── new/
-    │       │   └── [id]/edit/
+    │       ├── documents/         # list (search+filter) + new (editor/upload tabs) + [id] detail + [id]/pdf
+    │       │   ├── _components/   # DocumentsFilter (status tabs + ilike search)
+    │       │   ├── new/           # NewDocumentForm: editor tab + upload PDF tab
+    │       │   └── [id]/          # ChatPanel, ArchiveButton, ApprovalActions, SubmitButton
+    │       │       └── edit/
     │       ├── approvals/         # inbox + approve/return actions
     │       ├── signatures/        # user signature CRUD (Phase 4)
     │       ├── admin/users/       # IT Admin user CRUD
@@ -57,13 +59,16 @@ docutrail/
     │       └── admin/routes/      # approval route + step designer
     ├── components/
     │   ├── app/Sidebar.tsx
+    │   ├── chat/DocumentChat.tsx  # Realtime chat (Phase 6)
     │   ├── editor/Tiptap.tsx      # rich-text editor
+    │   ├── notifications/NotificationBell.tsx  # Realtime bell (Phase 5)
     │   ├── signature/SignaturePad.tsx  # draw/type/upload (Phase 4)
     │   └── ui/                    # shadcn primitives
     └── lib/
         ├── supabase/              # client.ts, server.ts, admin.ts, middleware.ts
         ├── db/                    # index.ts, schema.ts
         ├── user.ts
+        ├── chat-actions.ts        # getChatMessagesAction, sendChatMessageAction (Phase 6)
         ├── rbac/permissions.ts
         ├── pdf/                   # CCSDocument.tsx + generate.ts + stampSignature.ts (Phase 4)
         └── workflow/stateMachine.ts
@@ -166,6 +171,10 @@ npx shadcn@latest add <component>
 - **PDF generation** — `generateDocumentPdf()` in `lib/pdf/generate.ts` calls `renderToBuffer` server-side via `React.createElement(CCSDocument, ...)`. `@react-pdf/renderer` is in `serverExternalPackages` so webpack never bundles it for the browser. Generated PDF uploaded to `documents/{docId}/latest.pdf` in Supabase Storage using the admin client.
 - **Signature stamping** — `stampSignatureOnPdf()` in `lib/pdf/stampSignature.ts` uses `pdf-lib`. Step 1 stamps at x=30, step 2 at x=160, etc. (130pt spacing), y=38pt from bottom of last page. Overwrites the same `latest.pdf` path in Storage.
 - **Storage operations** — always use `createAdminClient()` (service role) for Storage upload/download in server actions; browser never touches Storage directly.
+- **Chat / Realtime** — `DocumentChat.tsx` subscribes via `supabase.channel('chat:{docId}').on('postgres_changes', { event: 'INSERT', table: 'chat_messages', filter: 'document_id=eq.{id}' }, ...)`. On INSERT, re-fetches via `getChatMessagesAction()` to pick up sender name join. Chat server actions live in `src/lib/chat-actions.ts` (imported by client components via `@/lib/chat-actions`).
+- **File upload server action** — accept `FormData` directly: `async function uploadDocumentAction(formData: FormData)`. Call from client with `const fd = new FormData(); fd.append('file', file); await uploadDocumentAction(fd)`. Do NOT use `<form action={fn}>` — call the action manually for better error handling.
+- **TabsContent (Base UI Panel)** — does NOT support `asChild` or slot composition. Wrap your `<form>` inside `<TabsContent value="...">...</TabsContent>`; never pass `asChild` as a prop.
+- **Documents page search** — accepts `searchParams: Promise<{ q?: string; status?: string }>` (must be `await`ed). Filters with `ilike(documents.title, \`%${q}%\`)` and `eq(documents.currentStatus, status)`. `DocumentsFilter` client component uses `useSearchParams` + `useRouter().push` with 350ms debounce.
 
 ## MCP servers
 

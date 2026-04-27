@@ -16,6 +16,8 @@ import {
 import { getCurrentUserProfile } from '@/lib/user'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+const READ_ALL_ROLES = ['it_admin', 'dean', 'exec_director', 'dept_chair'] as const
+
 const createSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   templateId: z.string().uuid('Select a template'),
@@ -268,5 +270,85 @@ export async function submitDocumentAction(documentId: string): Promise<SubmitRe
 
   revalidatePath('/documents')
   revalidatePath(`/documents/${documentId}`)
+  return { success: true }
+}
+
+export async function uploadDocumentAction(
+  formData: FormData,
+): Promise<ActionResult> {
+  const profile = await getCurrentUserProfile()
+  if (!profile) return { success: false, error: 'Unauthorized' }
+
+  const title = (formData.get('title') as string | null)?.trim()
+  const templateId = formData.get('templateId') as string | null
+  const file = formData.get('file') as File | null
+
+  if (!title) return { success: false, error: 'Title is required' }
+  if (!templateId) return { success: false, error: 'Template is required' }
+  if (!file || file.size === 0) return { success: false, error: 'No file selected' }
+  if (file.type !== 'application/pdf') {
+    return { success: false, error: 'Only PDF files are accepted' }
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    return { success: false, error: 'File must be under 20 MB' }
+  }
+
+  const [doc] = await db
+    .insert(documents)
+    .values({ title, templateId, creatorId: profile.id })
+    .returning({ id: documents.id })
+
+  const supabase = createAdminClient()
+  const fileBytes = new Uint8Array(await file.arrayBuffer())
+  const storagePath = `${doc.id}/latest.pdf`
+
+  const { error: uploadErr } = await supabase.storage
+    .from('documents')
+    .upload(storagePath, fileBytes, { contentType: 'application/pdf', upsert: true })
+
+  if (uploadErr) {
+    await db.delete(documents).where(eq(documents.id, doc.id))
+    return { success: false, error: `File upload failed: ${uploadErr.message}` }
+  }
+
+  await db.insert(documentVersions).values({
+    documentId: doc.id,
+    versionNo: 1,
+    content: null,
+    generatedPdfPath: storagePath,
+    createdBy: profile.id,
+  })
+
+  revalidatePath('/documents')
+  return { success: true, documentId: doc.id }
+}
+
+export async function archiveDocumentAction(
+  documentId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const profile = await getCurrentUserProfile()
+  if (!profile) return { success: false, error: 'Unauthorized' }
+
+  const [doc] = await db
+    .select({ creatorId: documents.creatorId, currentStatus: documents.currentStatus })
+    .from(documents)
+    .where(and(eq(documents.id, documentId), isNull(documents.deletedAt)))
+
+  if (!doc) return { success: false, error: 'Document not found' }
+  if (doc.currentStatus !== 'approved') {
+    return { success: false, error: 'Only approved documents can be archived' }
+  }
+
+  const isCreator = doc.creatorId === profile.id
+  const hasReadAll = READ_ALL_ROLES.includes(profile.role as (typeof READ_ALL_ROLES)[number])
+  if (!isCreator && !hasReadAll) return { success: false, error: 'Unauthorized' }
+
+  await db
+    .update(documents)
+    .set({ currentStatus: 'archived', updatedAt: new Date() })
+    .where(eq(documents.id, documentId))
+
+  revalidatePath(`/documents/${documentId}`)
+  revalidatePath('/documents')
   return { success: true }
 }

@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { isNull, desc, eq } from 'drizzle-orm'
+import { isNull, desc, eq, and, ilike } from 'drizzle-orm'
+import { Suspense } from 'react'
 import { getCurrentUserProfile } from '@/lib/user'
 import { db } from '@/lib/db'
 import { documents, documentTemplates } from '@/lib/db/schema'
+import type { documentStatus } from '@/lib/db/schema'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -16,6 +18,7 @@ import {
 import { Plus } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import DocumentsFilter from './_components/DocumentsFilter'
 
 export const metadata = { title: 'Documents — DocuTrail' }
 
@@ -27,9 +30,23 @@ const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'outline' | 'dest
   archived: 'outline',
 }
 
-export default async function DocumentsPage() {
+type ValidStatus = (typeof documentStatus.enumValues)[number]
+const VALID_STATUSES: ValidStatus[] = ['draft', 'in_review', 'approved', 'returned', 'archived']
+
+export default async function DocumentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string }>
+}) {
   const profile = await getCurrentUserProfile()
   if (!profile) redirect('/login')
+
+  const { q, status } = await searchParams
+
+  const statusFilter =
+    status && VALID_STATUSES.includes(status as ValidStatus)
+      ? (status as ValidStatus)
+      : undefined
 
   const docs = await db
     .select({
@@ -41,7 +58,13 @@ export default async function DocumentsPage() {
     })
     .from(documents)
     .leftJoin(documentTemplates, eq(documents.templateId, documentTemplates.id))
-    .where(isNull(documents.deletedAt))
+    .where(
+      and(
+        isNull(documents.deletedAt),
+        statusFilter ? eq(documents.currentStatus, statusFilter) : undefined,
+        q ? ilike(documents.title, `%${q}%`) : undefined,
+      ),
+    )
     .orderBy(desc(documents.createdAt))
 
   return (
@@ -57,6 +80,10 @@ export default async function DocumentsPage() {
         </Link>
       </div>
 
+      <Suspense fallback={null}>
+        <DocumentsFilter />
+      </Suspense>
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -71,10 +98,16 @@ export default async function DocumentsPage() {
             {docs.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                  No documents yet.{' '}
-                  <Link href="/documents/new" className="underline underline-offset-2">
-                    Create your first one.
-                  </Link>
+                  {q || statusFilter
+                    ? 'No documents match your search.'
+                    : (
+                      <>
+                        No documents yet.{' '}
+                        <Link href="/documents/new" className="underline underline-offset-2">
+                          Create your first one.
+                        </Link>
+                      </>
+                    )}
                 </TableCell>
               </TableRow>
             ) : (

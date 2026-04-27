@@ -26,7 +26,7 @@ async function main() {
     'roles', 'offices', 'users', 'role_permissions',
     'document_templates', 'documents', 'document_versions',
     'approval_routes', 'approval_steps', 'signatures', 'document_approvals',
-    'escalation_rules', 'notifications', 'audit_log',
+    'escalation_rules', 'notifications', 'audit_log', 'chat_messages',
   ]) {
     await sql.unsafe(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`)
     console.log(`  RLS enabled on ${table}`)
@@ -86,6 +86,8 @@ async function main() {
     ['notifications', 'notifications_select'],
     ['notifications', 'notifications_update'],
     ['audit_log', 'audit_log_select'],
+    ['chat_messages', 'chat_messages_select'],
+    ['chat_messages', 'chat_messages_insert'],
   ]
   for (const [table, policy] of policies) {
     await sql.unsafe(`DROP POLICY IF EXISTS "${policy}" ON ${table}`)
@@ -327,6 +329,59 @@ async function main() {
     FOR SELECT TO authenticated
     USING (has_permission(auth.uid(), 'view_audit_log'))
   `
+
+  // ── Phase 6: chat_messages ────────────────────────────────────────────────
+  // SELECT: sender, private recipient, or group message visible to doc participants
+  await sql`
+    CREATE POLICY chat_messages_select ON chat_messages
+    FOR SELECT TO authenticated
+    USING (
+      sender_id = auth.uid()
+      OR recipient_id = auth.uid()
+      OR (
+        recipient_id IS NULL
+        AND EXISTS (
+          SELECT 1 FROM documents d
+          WHERE d.id = document_id
+            AND d.deleted_at IS NULL
+            AND (
+              d.creator_id = auth.uid()
+              OR has_permission(auth.uid(), 'read_all_documents')
+              OR EXISTS (
+                SELECT 1 FROM document_approvals da
+                WHERE da.document_id = d.id AND da.assignee_id = auth.uid()
+              )
+            )
+        )
+      )
+    )
+  `
+  // INSERT: sender_id = uid AND user has access to the document
+  await sql`
+    CREATE POLICY chat_messages_insert ON chat_messages
+    FOR INSERT TO authenticated
+    WITH CHECK (
+      sender_id = auth.uid()
+      AND EXISTS (
+        SELECT 1 FROM documents d
+        WHERE d.id = document_id
+          AND d.deleted_at IS NULL
+          AND (
+            d.creator_id = auth.uid()
+            OR has_permission(auth.uid(), 'read_all_documents')
+            OR EXISTS (
+              SELECT 1 FROM document_approvals da
+              WHERE da.document_id = d.id AND da.assignee_id = auth.uid()
+            )
+          )
+      )
+    )
+  `
+
+  // Enable Realtime on chat_messages so clients can subscribe to new messages
+  await sql`ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages`.catch(() => {
+    // May already be added on re-run
+  })
 
   console.log('  Policies created')
   console.log('RLS setup complete.')

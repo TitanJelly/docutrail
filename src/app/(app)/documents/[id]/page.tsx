@@ -16,6 +16,7 @@ import {
   signatures,
 } from '@/lib/db/schema'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getChatMessagesAction } from '@/lib/chat-actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, CheckCircle, Clock, Download, XCircle } from 'lucide-react'
@@ -24,6 +25,8 @@ import type { JSONContent } from '@tiptap/core'
 import TiptapViewer from '@/components/editor/TiptapViewer'
 import ApprovalActions from './_components/ApprovalActions'
 import SubmitButton from './_components/SubmitButton'
+import ChatPanel from './_components/ChatPanel'
+import ArchiveButton from './_components/ArchiveButton'
 
 export const metadata = { title: 'Document — DocuTrail' }
 
@@ -59,11 +62,9 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
 
   if (!doc) notFound()
 
-  // Permission check: creator, assignee, or read_all_documents
   const isCreator = doc.creatorId === profile.id
   const hasReadAll = ['it_admin', 'dean', 'exec_director', 'dept_chair'].includes(profile.role)
 
-  // Latest version — content + PDF path in one query
   const [latestVersion] = await db
     .select({
       content: documentVersions.content,
@@ -76,7 +77,6 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
 
   const hasPdf = !!latestVersion?.generatedPdfPath
 
-  // User's saved signatures (passed to ApprovalActions for the signature picker)
   const userSigRows = await db
     .select({ id: signatures.id, type: signatures.type, dataPath: signatures.dataPath })
     .from(signatures)
@@ -93,7 +93,6 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
     }),
   )
 
-  // Approval chain (all steps in route order with their approval rows)
   let chain: {
     stepId: string
     orderIndex: number
@@ -124,7 +123,6 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
       .where(eq(approvalSteps.routeId, doc.routeId))
       .orderBy(asc(approvalSteps.orderIndex))
 
-    // Get approval rows for this document
     const approvalRows = await db
       .select({
         id: documentApprovals.id,
@@ -142,7 +140,6 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
 
     chain = steps.map((step) => {
       const stepApprovals = approvalRows.filter((a) => a.stepId === step.stepId)
-      // Show the most recent approval for this step
       const latest = stepApprovals[0] ?? null
       return {
         stepId: step.stepId,
@@ -158,7 +155,6 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
       }
     })
 
-    // Check if current user has a pending approval for the current step
     if (doc.currentStepId) {
       const myPending = approvalRows.find(
         (a) =>
@@ -169,6 +165,15 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
       if (myPending) pendingApprovalForCurrentUser = myPending.id
     }
   }
+
+  // Determine if this user can access chat (creator, assignee, or read_all)
+  const isAssignee = chain.some((s) => s.approvalId !== null)
+  const canChat = isCreator || hasReadAll || isAssignee
+
+  const initialMessages = canChat ? await getChatMessagesAction(id) : []
+
+  const canArchive =
+    doc.currentStatus === 'approved' && (isCreator || hasReadAll)
 
   return (
     <div className="space-y-6">
@@ -215,6 +220,7 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
               userSignatures={userSignatures}
             />
           )}
+          {canArchive && <ArchiveButton documentId={id} />}
         </div>
       </div>
 
@@ -230,6 +236,10 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
         />
         {latestVersion?.content ? (
           <TiptapViewer content={latestVersion.content as JSONContent} />
+        ) : hasPdf ? (
+          <div className="px-8 py-4 text-sm text-muted-foreground">
+            This document was uploaded as a PDF. Download to view the content.
+          </div>
         ) : (
           <div className="px-8 py-4 text-sm text-muted-foreground">No content yet.</div>
         )}
@@ -293,6 +303,15 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
             })}
           </ol>
         </section>
+      )}
+
+      {/* Chat panel — visible to participants only */}
+      {canChat && (
+        <ChatPanel
+          documentId={id}
+          currentUserId={profile.id}
+          initialMessages={initialMessages}
+        />
       )}
     </div>
   )

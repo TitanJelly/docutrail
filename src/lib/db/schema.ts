@@ -260,6 +260,22 @@ export const notifications = pgTable(
   }),
 )
 
+// ─── Phase 6 tables ──────────────────────────────────────────────────────────
+
+// Document-scoped chat — group (recipient_id IS NULL) or private DM
+export const chatMessages = pgTable('chat_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  documentId: uuid('document_id')
+    .references(() => documents.id, { onDelete: 'cascade' })
+    .notNull(),
+  senderId: uuid('sender_id')
+    .references(() => users.id)
+    .notNull(),
+  recipientId: uuid('recipient_id').references(() => users.id), // null = visible to all doc participants
+  body: text('body').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
 // Append-only audit log — INSERT only; UPDATE/DELETE blocked via RLS
 export const auditLog = pgTable('audit_log', {
   id: uuid('id').primaryKey().defaultRandom(),
