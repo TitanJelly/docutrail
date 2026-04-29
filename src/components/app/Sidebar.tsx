@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { can, type Role, type Action } from '@/lib/rbac/permissions'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Users, FileText, LayoutTemplate, LogOut, CheckSquare, GitBranch, PenLine, Archive } from 'lucide-react'
+import { LayoutDashboard, Users, FileText, LayoutTemplate, LogOut, CheckSquare, GitBranch, PenLine, Archive, BarChart2, ScrollText } from 'lucide-react'
 
 type NavItem = {
   href: string
@@ -41,6 +41,18 @@ const NAV: NavItem[] = [
     href: '/signatures',
     label: 'Signatures',
     icon: <PenLine size={16} />,
+  },
+  {
+    href: '/analytics',
+    label: 'Analytics',
+    icon: <BarChart2 size={16} />,
+    requires: 'read_all_documents',
+  },
+  {
+    href: '/audit',
+    label: 'Audit Log',
+    icon: <ScrollText size={16} />,
+    requires: 'view_audit_log',
   },
   {
     href: '/admin/users',

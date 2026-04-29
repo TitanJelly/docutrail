@@ -26,6 +26,7 @@ Web app for the **College of Computer Studies (CCS)** that replaces paper-based 
 | PDFs | `@react-pdf/renderer` (generate) + `pdf-lib` (stamp signatures) |
 | Signatures | `react-signature-canvas` + typed-name + image upload |
 | Realtime / toasts | Supabase Realtime + Sonner |
+| Charts | Recharts (analytics dashboard) |
 | Escalation | Supabase Edge Function + `pg_cron` hourly scanner |
 | Hosting | Vercel + Supabase free tier |
 
@@ -34,16 +35,20 @@ Web app for the **College of Computer Studies (CCS)** that replaces paper-based 
 docutrail/
 ├── public/
 │   ├── ccs-header.png             # CHMSU/CCS letterhead banner (header)
-│   └── ccs-footer.png             # CCS footer banner (contact + slogan)
+│   ├── ccs-footer.png             # CCS footer banner (contact + slogan)
+│   ├── manifest.json              # PWA manifest (Phase 7)
+│   └── sw.js                      # service worker (Phase 7)
 ├── scripts/
 │   ├── check-connection.ts        # smoke test REST + pooler
 │   ├── setup-rls.ts               # enable RLS + has_permission() + policies
-│   └── seed.ts                    # seed roles / offices / role_permissions
+│   ├── seed.ts                    # seed roles / offices / role_permissions
+│   └── seed-demo.ts               # demo users + template + route + docs (Phase 7)
 └── src/
     ├── middleware.ts
     ├── app/
     │   ├── layout.tsx
     │   ├── (auth)/login/
+    │   ├── api/audit/export/      # CSV export route (Phase 7, gated view_audit_log)
     │   └── (app)/
     │       ├── layout.tsx
     │       ├── dashboard/
@@ -54,11 +59,14 @@ docutrail/
     │       │       └── edit/
     │       ├── approvals/         # inbox + approve/return actions
     │       ├── signatures/        # user signature CRUD (Phase 4)
+    │       ├── analytics/         # analytics dashboard (Phase 7, gated read_all_documents)
+    │       ├── audit/             # audit log viewer (Phase 7, gated view_audit_log)
     │       ├── admin/users/       # IT Admin user CRUD
     │       ├── admin/templates/   # IT Admin template CRUD
     │       └── admin/routes/      # approval route + step designer
     ├── components/
     │   ├── app/Sidebar.tsx
+    │   ├── app/PwaRegister.tsx    # registers /sw.js on mount (Phase 7)
     │   ├── chat/DocumentChat.tsx  # Realtime chat (Phase 6)
     │   ├── editor/Tiptap.tsx      # rich-text editor
     │   ├── notifications/NotificationBell.tsx  # Realtime bell (Phase 5)
@@ -141,6 +149,7 @@ npm run db:studio     # drizzle-kit studio    (DB GUI)
 npm run setup:rls     # run scripts/setup-rls.ts  — enable RLS + policies (once per fresh DB)
 npm run setup:storage # run scripts/setup-storage.ts — create documents + signatures buckets (Phase 4)
 npm run seed          # run scripts/seed.ts        — seed roles / offices / permissions
+npm run seed:demo     # run scripts/seed-demo.ts   — 8 demo users + 1 template + 1 route + 5 docs (idempotent)
 ```
 
 ### Connectivity smoke test (run first if anything seems off)
@@ -175,6 +184,7 @@ npx shadcn@latest add <component>
 - **File upload server action** — accept `FormData` directly: `async function uploadDocumentAction(formData: FormData)`. Call from client with `const fd = new FormData(); fd.append('file', file); await uploadDocumentAction(fd)`. Do NOT use `<form action={fn}>` — call the action manually for better error handling.
 - **TabsContent (Base UI Panel)** — does NOT support `asChild` or slot composition. Wrap your `<form>` inside `<TabsContent value="...">...</TabsContent>`; never pass `asChild` as a prop.
 - **Documents page search** — accepts `searchParams: Promise<{ q?: string; status?: string }>` (must be `await`ed). Filters with `ilike(documents.title, \`%${q}%\`)` and `eq(documents.currentStatus, status)`. `DocumentsFilter` client component uses `useSearchParams` + `useRouter().push` with 350ms debounce.
+- **Next 16 metadata vs viewport** — `themeColor` belongs in `export const viewport: Viewport = { themeColor: '...' }`, NOT in `metadata`. Putting it in `metadata` triggers a build-time warning on every page. See `src/app/layout.tsx`.
 
 ## MCP servers
 

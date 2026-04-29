@@ -2,13 +2,13 @@
 
 > Living snapshot. Update after every meaningful change. Durable policy lives in `CLAUDE.md`.
 
-**Last updated:** 2026-04-27
+**Last updated:** 2026-04-29
 
 ---
 
 ## Current phase
 
-**Phase 7 — Polish, extras, defense prep**
+**Defense prep — Phase 7 complete; all 8 phases shipped.**
 
 ---
 
@@ -29,7 +29,10 @@
 | Document-scoped chat (Realtime) + Archive button | ✅ Ph6 |
 | PDF upload path (bypass editor) | ✅ Ph6 |
 | Document search (title ilike) + status filter tabs | ✅ Ph6 |
-| PWA, analytics, CSV export, demo data | 🔜 Ph7 |
+| PWA manifest + service worker + SW registration | ✅ Ph7 |
+| Analytics dashboard (doc volume, trend, bottleneck) | ✅ Ph7 |
+| Audit log page + CSV export (`/api/audit/export`) | ✅ Ph7 |
+| Demo seed script (`npm run seed:demo`) | ✅ Ph7 |
 
 ---
 
@@ -41,12 +44,12 @@
 
 ---
 
-## Next — Phase 7: Polish, extras, defense prep
+## Phase 7 complete ✅
 
-- Responsive PWA manifest + service worker (`next-pwa` or manual)
-- Analytics dashboard (Recharts): doc volume, avg approval time, bottleneck office
-- CSV export of audit log
-- Seed demo data (8 roles × realistic docs) + user guide + deployment doc
+All four items shipped. Remaining defense prep:
+- Add real 192×512px PNG icons to `public/` (`icon-192.png`, `icon-512.png`) for full PWA installability
+- Run `npm run seed:demo` against the live DB to populate demo users + documents before the defense
+- User guide / deployment doc (optional; can be done in slide deck)
 
 ---
 
@@ -67,6 +70,7 @@
 
 ## Update log
 
+- **2026-04-29** — Phase 7 complete: PWA manifest + `sw.js` + `PwaRegister` client component; `/analytics` page (doc-volume bar, monthly trend area, bottleneck horizontal bar — Recharts, gated `read_all_documents`); `/audit` page (last 200 rows, hash column) + `/api/audit/export` CSV route (gated `view_audit_log`); `scripts/seed-demo.ts` (8 demo users + 5 docs, idempotent, `npm run seed:demo`); Analytics + Audit Log links in Sidebar.
 - **2026-04-27** — Phase 6 complete: `chat_messages` table pushed + RLS/Realtime live; `DocumentChat` Realtime component; `ChatPanel`; `ArchiveButton` (approved → archived); `uploadDocumentAction` (PDF upload); `DocumentsFilter` (status tabs + title `ilike` search); Sidebar Archive link.
 - **2026-04-26** — Phase 5 DB wiring complete: `triggers.sql` applied (`log_mutation()` audit triggers on all business tables, `enforce_document_status_transition`, `audit_verify` view, `get_overdue_approvals()` RPC); `pg_cron` + `pg_net` extensions enabled; `escalation-scanner` Edge Function deployed; hourly `pg_cron` schedule created (job id 1). Supabase CLI v2.90.0 installed to `%LOCALAPPDATA%\supabase\`.
 - **2026-04-26** — Phase 5 complete: `audit_log` + `notifications` + `escalation_rules` tables; `log_mutation()` hash-chain trigger; status-transition trigger (L7); `audit_verify` view; `escalation-scanner` Edge Function with circuit-breaker + idempotency (L2/L6); `NotificationBell` Realtime component + Sonner toasts; stamp failure made fatal (L5); `approvedVersionId` on approvals (L10); `manage_escalation_rules` permission; L11 RLS fix; pre-existing lint errors fixed.
